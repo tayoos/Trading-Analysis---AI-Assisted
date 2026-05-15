@@ -74,6 +74,46 @@ class T212DataSource(DataSource):
 
         return trades
 
+    def get_dividends(self, since: Optional[str] = None) -> list[dict]:
+        """
+        Fetch dividend payment history from T212.
+        Returns plain dicts ready to pass to Database.save_dividends().
+        """
+        params: dict = {"limit": 50}
+        results: list[dict] = []
+        cursor = None
+
+        while True:
+            if cursor:
+                params["cursor"] = cursor
+            data = self._get("/api/v0/history/dividends", params=params)
+
+            items = data.get("items", [])
+            next_cursor = data.get("nextPagePath")
+
+            for item in items:
+                paid_at = item.get("paidOn", item.get("dateModified", ""))
+                if since and paid_at <= since:
+                    return results
+                ticker = self._normalise_ticker(item.get("ticker", ""))
+                if not ticker:
+                    continue
+                results.append({
+                    "t212_ref": str(item.get("reference", item.get("id", ""))),
+                    "ticker": ticker,
+                    "amount": float(item.get("amount", item.get("grossAmount", 0))),
+                    "shares_held": float(item.get("quantity", 0)) or None,
+                    "paid_at": paid_at,
+                })
+
+            if not next_cursor or not items:
+                break
+            import urllib.parse as up
+            qs = up.urlparse(next_cursor).query
+            cursor = up.parse_qs(qs).get("cursor", [None])[0]
+
+        return results
+
     # ── Private helpers ────────────────────────────────────────────────────────
 
     def _get(self, path: str, params: Optional[dict] = None) -> dict | list:

@@ -109,6 +109,48 @@
     </table>
   </div>
   {% endif %}
+
+  {% if dividend_summary %}
+  <div class="section">
+    <h2>Dividends received (all time)</h2>
+    <table>
+      <thead>
+        <tr><th>Ticker</th><th>Total Received</th><th>Payments</th><th>Last Paid</th></tr>
+      </thead>
+      <tbody>
+      {% for d in dividend_summary %}
+        <tr>
+          <td>{{ d.ticker }}</td>
+          <td style="color:#4caf50">£{{ '%.2f'|format(d.total_received) }}</td>
+          <td>{{ d.payment_count }}</td>
+          <td>{{ (d.last_paid or '')[:10] }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+
+  {% if dividends %}
+  <div class="section">
+    <h2>Recent dividend payments</h2>
+    <table>
+      <thead>
+        <tr><th>Date</th><th>Ticker</th><th>Amount</th><th>Shares at payment</th></tr>
+      </thead>
+      <tbody>
+      {% for d in dividends %}
+        <tr>
+          <td>{{ (d.paid_at or '')[:10] }}</td>
+          <td>{{ d.ticker }}</td>
+          <td style="color:#4caf50">£{{ '%.4f'|format(d.amount) }}</td>
+          <td>{{ d.shares_held or '—' }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
 </div>
 
 <script>

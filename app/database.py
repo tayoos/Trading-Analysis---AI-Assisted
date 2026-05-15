@@ -111,9 +111,20 @@ class Database:
                     notes           TEXT
                 );
 
+                CREATE TABLE IF NOT EXISTS dividends (
+                    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                    t212_ref        TEXT UNIQUE,    -- T212's reference ID, for dedup
+                    ticker          TEXT NOT NULL,
+                    amount          REAL NOT NULL,  -- cash received, account currency
+                    shares_held     REAL,           -- shares at ex-date (for yield calc)
+                    paid_at         TEXT NOT NULL,  -- ISO timestamp
+                    synced_at       TEXT NOT NULL
+                );
+
                 CREATE INDEX IF NOT EXISTS idx_analyses_run ON analyses(run_id);
                 CREATE INDEX IF NOT EXISTS idx_analyses_ticker ON analyses(ticker);
                 CREATE INDEX IF NOT EXISTS idx_trades_ticker ON trades(ticker);
+                CREATE INDEX IF NOT EXISTS idx_dividends_ticker ON dividends(ticker);
             """)
 
     # ── Runs ───────────────────────────────────────────────────────────────────
@@ -352,4 +363,50 @@ class Database:
                 rows = conn.execute(
                     "SELECT * FROM owned_history ORDER BY fully_sold_at DESC"
                 ).fetchall()
+            return [dict(r) for r in rows]
+
+    # ── Dividends ──────────────────────────────────────────────────────────────
+
+    def save_dividends(self, dividends: list[dict]) -> int:
+        saved = 0
+        with self._conn() as conn:
+            for d in dividends:
+                try:
+                    conn.execute(
+                        """INSERT OR IGNORE INTO dividends
+                           (t212_ref, ticker, amount, shares_held, paid_at, synced_at)
+                           VALUES (?,?,?,?,?,?)""",
+                        (d.get("t212_ref"), d["ticker"], d["amount"],
+                         d.get("shares_held"), d["paid_at"], _now()),
+                    )
+                    saved += conn.execute("SELECT changes()").fetchone()[0]
+                except Exception:
+                    pass
+        return saved
+
+    def get_dividends(self, ticker: Optional[str] = None, limit: int = 200) -> list[dict]:
+        with self._conn() as conn:
+            if ticker:
+                rows = conn.execute(
+                    "SELECT * FROM dividends WHERE ticker=? ORDER BY paid_at DESC LIMIT ?",
+                    (ticker, limit),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    "SELECT * FROM dividends ORDER BY paid_at DESC LIMIT ?", (limit,)
+                ).fetchall()
+            return [dict(r) for r in rows]
+
+    def get_dividend_summary(self) -> list[dict]:
+        """Total dividends received per ticker, all time."""
+        with self._conn() as conn:
+            rows = conn.execute(
+                """SELECT ticker,
+                          SUM(amount)  AS total_received,
+                          COUNT(*)     AS payment_count,
+                          MAX(paid_at) AS last_paid
+                   FROM dividends
+                   GROUP BY ticker
+                   ORDER BY total_received DESC"""
+            ).fetchall()
             return [dict(r) for r in rows]

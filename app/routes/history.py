@@ -34,12 +34,16 @@ def ticker_page(ticker: str):
     history = db.get_ticker_history(ticker)
     handoff = db.get_handoff_note(ticker)
     owned = db.get_owned_history(ticker)
+    dividends = db.get_dividends(ticker=ticker)
+    total_dividends = sum(d["amount"] for d in dividends)
     return render_template(
         "ticker.html",
         ticker=ticker,
         history=history,
         handoff_note=handoff,
         owned_history=owned,
+        dividends=dividends,
+        total_dividends=total_dividends,
     )
 
 

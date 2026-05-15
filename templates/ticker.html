@@ -150,6 +150,29 @@
     </table>
   </div>
   {% endif %}
+
+  {% if dividends %}
+  <div class="section">
+    <h2>Dividends received</h2>
+    <p style="font-size:13px;color:var(--muted);margin-bottom:12px">
+      Total received: <strong style="color:var(--pos)">£{{ '%.2f'|format(total_dividends) }}</strong>
+    </p>
+    <table>
+      <thead>
+        <tr><th>Date</th><th>Amount</th><th>Shares held</th></tr>
+      </thead>
+      <tbody>
+      {% for d in dividends %}
+        <tr>
+          <td>{{ (d.paid_at or '')[:10] }}</td>
+          <td style="color:var(--pos)">£{{ '%.4f'|format(d.amount) }}</td>
+          <td>{{ d.shares_held or '—' }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
 </div>
 </body>
 </html>
