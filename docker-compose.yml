@@ -1,0 +1,14 @@
+services:
+  stock-analyzer:
+    build: .
+    ports:
+      - "8765:8765"
+    env_file: .env
+    volumes:
+      - ./data/db:/data/db
+      - ./data/reports:/data/reports
+      - ./data/stocks:/data/stocks
+      # Hot-reload in dev — remove in prod
+      - ./app:/app/app
+      - ./templates:/app/templates
+    restart: unless-stopped

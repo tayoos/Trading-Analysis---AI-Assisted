@@ -1,0 +1,24 @@
+services:
+  stock-analyzer:
+    image: ghcr.io/YOURUSERNAME/stock-analyzer:latest
+    container_name: stock-analyzer
+    ports:
+      - "8765:8765"
+    environment:
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - TRADING212_API_KEY=${TRADING212_API_KEY}
+    volumes:
+      - /mnt/user/appdata/stock-analyzer/db:/data/db
+      - /mnt/user/appdata/stock-analyzer/reports:/data/reports
+      - /mnt/user/stocks:/data/stocks
+    restart: unless-stopped
+
+  watchtower:
+    image: containrrr/watchtower
+    container_name: watchtower-stock-analyzer
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      # Mount GHCR credentials if image is private
+      # - /root/.docker/config.json:/config.json
+    command: stock-analyzer --interval 300
+    restart: unless-stopped

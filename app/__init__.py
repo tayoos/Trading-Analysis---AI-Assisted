@@ -1,0 +1,141 @@
+import logging
+import os
+
+from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.triggers.cron import CronTrigger
+from flask import Flask
+
+from .analyzer import StockAnalyzer
+from .database import Database
+from .portfolio import PortfolioManager
+from .routes import analysis_bp, dashboard_bp, history_bp, sync_bp
+from .sources.t212 import T212DataSource
+
+logger = logging.getLogger(__name__)
+
+
+def create_app() -> Flask:
+    app = Flask(__name__, template_folder="../templates")
+    app.secret_key = os.getenv("SECRET_KEY", os.urandom(24).hex())
+
+    _load_env()
+
+    # ── Core services ──────────────────────────────────────────────────────────
+    db = Database(os.getenv("DB_PATH", "/data/db/stocks.db"))
+    t212 = T212DataSource()
+    portfolio = PortfolioManager(db)
+    analyzer = StockAnalyzer(db)
+
+    app.extensions["db"] = db
+    app.extensions["t212"] = t212
+    app.extensions["portfolio"] = portfolio
+    app.extensions["analyzer"] = analyzer
+
+    # ── Blueprints ─────────────────────────────────────────────────────────────
+    app.register_blueprint(dashboard_bp)
+    app.register_blueprint(analysis_bp)
+    app.register_blueprint(history_bp)
+    app.register_blueprint(sync_bp)
+
+    # ── Scheduler ──────────────────────────────────────────────────────────────
+    _setup_scheduler(app, analyzer, portfolio, t212)
+
+    return app
+
+
+def _load_env() -> None:
+    try:
+        from dotenv import load_dotenv
+        load_dotenv()
+    except ImportError:
+        pass
+
+
+def _setup_scheduler(app: Flask, analyzer: StockAnalyzer,
+                     portfolio: PortfolioManager, t212: T212DataSource) -> None:
+    days_raw = os.getenv("SCHEDULE_DAYS", "1,3,5")
+    hour = int(os.getenv("SCHEDULE_HOUR", "7"))
+    sync_offset = int(os.getenv("T212_SYNC_OFFSET_MINS", "30"))
+    sync_enabled = os.getenv("T212_SYNC_ENABLED", "true").lower() == "true"
+
+    # day_of_week: APScheduler uses 0=Mon … 6=Sun (same as the env var convention)
+    try:
+        day_of_week = ",".join(
+            str(int(d.strip())) for d in days_raw.split(",")
+        )
+    except ValueError:
+        day_of_week = "1,3,5"
+
+    scheduler = BackgroundScheduler(daemon=True)
+
+    if sync_enabled and t212.is_available():
+        sync_minute = 60 - sync_offset if sync_offset < 60 else 0
+        sync_hour = hour - 1 if sync_offset >= 60 else hour
+        scheduler.add_job(
+            func=_sync_job,
+            args=[app, t212, portfolio],
+            trigger=CronTrigger(day_of_week=day_of_week, hour=sync_hour, minute=sync_minute),
+            id="t212_sync",
+            name="T212 pre-run sync",
+            replace_existing=True,
+        )
+        logger.info("Scheduled T212 sync at %02d:%02d on days %s", sync_hour, sync_minute, day_of_week)
+
+    scheduler.add_job(
+        func=_analysis_job,
+        args=[app, analyzer, portfolio],
+        trigger=CronTrigger(day_of_week=day_of_week, hour=hour, minute=0),
+        id="analysis",
+        name="Stock analysis",
+        replace_existing=True,
+    )
+    logger.info("Scheduled analysis at %02d:00 on days %s", hour, day_of_week)
+
+    scheduler.start()
+    app.extensions["scheduler"] = scheduler
+
+
+def _sync_job(app: Flask, t212: T212DataSource, portfolio: PortfolioManager) -> None:
+    with app.app_context():
+        logger.info("Running scheduled T212 sync")
+        try:
+            db = app.extensions["db"]
+            last = db.get_last_sync_time()
+            orders = t212.get_orders(since=last)
+            from .sources.base import Trade
+            trades = [
+                Trade(
+                    order_id=o.order_id, ticker=o.ticker, action=o.action,
+                    quantity=o.quantity, price=o.price, total_value=o.total_value,
+                    traded_at=o.traded_at,
+                )
+                for o in orders
+            ]
+            portfolio.apply_trades(trades)
+        except Exception:
+            logger.exception("Scheduled T212 sync failed")
+
+
+def _analysis_job(app: Flask, analyzer: StockAnalyzer, portfolio: PortfolioManager) -> None:
+    with app.app_context():
+        logger.info("Running scheduled analysis")
+        holdings = portfolio.get_holdings()
+        if holdings:
+            analyzer.run_analysis(holdings)
+        else:
+            logger.warning("No holdings found for scheduled analysis")
+
+
+# Allow `python -m app` for local dev
+def main() -> None:
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+    )
+    app = create_app()
+    port = int(os.getenv("PORT", "8765"))
+    app.run(host="0.0.0.0", port=port, debug=False)
+
+
+if __name__ == "__main__":
+    main()

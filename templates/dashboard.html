@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Stock Analyzer</title>
+  <style>
+    :root {
+      --bg: #0f1117; --surface: #1a1d2e; --surface2: #242740;
+      --border: #2d3156; --text: #e2e4f0; --muted: #7b7fa8;
+      --buy: #2196f3; --hold: #78909c; --sell: #ef5350; --watch: #ff9800;
+      --pos: #4caf50; --neg: #ef5350; --neu: #78909c;
+      --radius: 10px; --gap: 14px;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: var(--bg); color: var(--text); font-family: system-ui, sans-serif;
+           font-size: 14px; min-height: 100vh; }
+    a { color: var(--buy); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    /* ── Nav ── */
+    nav { background: var(--surface); border-bottom: 1px solid var(--border);
+          padding: 12px 24px; display: flex; align-items: center; gap: 24px; }
+    nav .logo { font-weight: 700; font-size: 16px; letter-spacing: .5px; }
+    nav a { color: var(--muted); font-size: 13px; }
+    nav a:hover { color: var(--text); text-decoration: none; }
+    nav .spacer { flex: 1; }
+
+    /* ── Status banner ── */
+    #status-banner { display: none; background: var(--surface2);
+                     border-bottom: 1px solid var(--border);
+                     padding: 8px 24px; font-size: 13px; }
+    #status-banner.visible { display: flex; align-items: center; gap: 10px; }
+    .spinner { width: 14px; height: 14px; border: 2px solid var(--border);
+               border-top-color: var(--buy); border-radius: 50%;
+               animation: spin .7s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    #log-lines { font-family: monospace; font-size: 12px; color: var(--muted);
+                 max-width: 700px; overflow: hidden; white-space: nowrap;
+                 text-overflow: ellipsis; }
+
+    /* ── Summary bar ── */
+    .summary-bar { display: flex; gap: var(--gap); padding: 16px 24px;
+                   flex-wrap: wrap; }
+    .summary-card { background: var(--surface); border: 1px solid var(--border);
+                    border-radius: var(--radius); padding: 12px 18px;
+                    min-width: 150px; }
+    .summary-card .label { font-size: 11px; color: var(--muted);
+                           text-transform: uppercase; letter-spacing: .5px; }
+    .summary-card .value { font-size: 22px; font-weight: 700; margin-top: 4px; }
+    .summary-card .value.pos { color: var(--pos); }
+    .summary-card .value.neg { color: var(--neg); }
+
+    /* ── Controls ── */
+    .controls { padding: 0 24px 12px; display: flex; align-items: center; gap: 10px; }
+    button { cursor: pointer; border: none; border-radius: 6px; padding: 8px 16px;
+             font-size: 13px; font-weight: 600; transition: opacity .15s; }
+    button:hover { opacity: .85; }
+    button:disabled { opacity: .4; cursor: not-allowed; }
+    .btn-primary { background: var(--buy); color: #fff; }
+    .btn-secondary { background: var(--surface2); color: var(--text);
+                     border: 1px solid var(--border); }
+
+    /* ── Grid ── */
+    .grid { display: grid; gap: var(--gap); padding: 0 24px 24px;
+            grid-template-columns: repeat(auto-fill, minmax(380px, 1fr)); }
+
+    /* ── Card ── */
+    .card { background: var(--surface); border: 1px solid var(--border);
+            border-radius: var(--radius); overflow: hidden;
+            transition: border-color .2s; cursor: pointer; }
+    .card:hover { border-color: var(--buy); }
+    .card-header { display: flex; align-items: center; gap: 10px;
+                   padding: 12px 16px; border-bottom: 1px solid var(--border); }
+    .ticker { font-size: 18px; font-weight: 700; flex: 1; }
+    .badge { padding: 3px 10px; border-radius: 4px; font-size: 12px;
+             font-weight: 700; letter-spacing: .5px; }
+    .badge-BUY  { background: var(--buy);  color: #fff; }
+    .badge-HOLD { background: var(--hold); color: #fff; }
+    .badge-SELL { background: var(--sell); color: #fff; }
+    .badge-WATCH{ background: var(--watch);color: #000; }
+    .confidence { font-size: 11px; color: var(--muted); }
+
+    .card-metrics { display: grid; grid-template-columns: repeat(3, 1fr);
+                    gap: 1px; background: var(--border); }
+    .metric { background: var(--surface); padding: 10px 12px; }
+    .metric .mlabel { font-size: 10px; color: var(--muted);
+                      text-transform: uppercase; letter-spacing: .4px; }
+    .metric .mvalue { font-size: 14px; font-weight: 600; margin-top: 2px; }
+    .metric .mvalue.pos { color: var(--pos); }
+    .metric .mvalue.neg { color: var(--neg); }
+
+    .card-body { padding: 12px 16px; }
+    .reasoning { font-size: 13px; line-height: 1.5; color: var(--text);
+                 margin-bottom: 10px; }
+    .sentiment-pill { display: inline-block; padding: 2px 8px; border-radius: 4px;
+                      font-size: 11px; font-weight: 600; margin-bottom: 8px; }
+    .sentiment-POSITIVE { background: rgba(76,175,80,.2); color: var(--pos); }
+    .sentiment-NEUTRAL  { background: rgba(120,144,156,.2); color: var(--neu); }
+    .sentiment-NEGATIVE { background: rgba(239,83,80,.2); color: var(--neg); }
+
+    .news-summary { font-size: 12px; color: var(--muted); margin-bottom: 10px; }
+
+    .three-col { display: grid; grid-template-columns: repeat(3, 1fr);
+                 gap: 8px; margin-bottom: 10px; }
+    .col-head { font-size: 10px; font-weight: 700; text-transform: uppercase;
+                letter-spacing: .4px; margin-bottom: 4px; }
+    .col-head.cat  { color: var(--pos); }
+    .col-head.risk { color: var(--neg); }
+    .col-head.worry{ color: var(--watch); }
+    .col-list { font-size: 11px; color: var(--muted); line-height: 1.6;
+                list-style: none; }
+    .col-list li::before { content: "•  "; color: var(--border); }
+
+    /* ── Handoff bar ── */
+    .handoff-bar { background: var(--surface2); border-top: 1px solid var(--border);
+                   padding: 8px 16px; font-size: 11px; color: var(--muted);
+                   display: flex; gap: 12px; flex-wrap: wrap; }
+    .handoff-bar .hb-label { color: var(--buy); font-weight: 600; }
+
+    /* ── Target bar ── */
+    .target-bar { background: var(--surface2); padding: 8px 16px;
+                  font-size: 12px; display: flex; gap: 16px; flex-wrap: wrap;
+                  border-top: 1px solid var(--border); }
+    .target-bar span { color: var(--muted); }
+    .target-bar strong { color: var(--text); }
+
+    /* ── Empty state ── */
+    .empty { text-align: center; padding: 80px 24px; color: var(--muted); }
+    .empty h2 { font-size: 20px; margin-bottom: 8px; color: var(--text); }
+  </style>
+</head>
+<body>
+
+<nav>
+  <span class="logo">📈 Stock Analyzer</span>
+  <a href="/">Dashboard</a>
+  <a href="/history">History</a>
+  <a href="/sync">Sync</a>
+  <span class="spacer"></span>
+  <span id="nav-status" style="font-size:12px;color:var(--muted)"></span>
+</nav>
+
+<div id="status-banner">
+  <div class="spinner"></div>
+  <div id="log-lines">Initialising…</div>
+</div>
+
+<div class="summary-bar" id="summary-bar">
+  <div class="summary-card">
+    <div class="label">Portfolio Value</div>
+    <div class="value" id="s-value">—</div>
+  </div>
+  <div class="summary-card">
+    <div class="label">Invested</div>
+    <div class="value" id="s-cost">—</div>
+  </div>
+  <div class="summary-card">
+    <div class="label">Total P&amp;L</div>
+    <div class="value" id="s-pnl">—</div>
+  </div>
+  <div class="summary-card">
+    <div class="label">P&amp;L %</div>
+    <div class="value" id="s-pnl-pct">—</div>
+  </div>
+  <div class="summary-card">
+    <div class="label">Positions</div>
+    <div class="value" id="s-count">—</div>
+  </div>
+</div>
+
+<div class="controls">
+  <button class="btn-primary" id="run-btn" onclick="triggerRun()">Run Analysis Now</button>
+  <button class="btn-secondary" onclick="location.href='/sync'">Sync T212</button>
+</div>
+
+<div class="grid" id="card-grid">
+  {% if not cards %}
+  <div class="empty" style="grid-column:1/-1">
+    <h2>No analysis data yet</h2>
+    <p>Add your holdings to <code>stocks.xlsx</code> or sync Trading 212, then click Run Analysis.</p>
+  </div>
+  {% endif %}
+
+  {% for card in cards %}
+  {% set ticker = card.ticker %}
+  {% set price = card.current_price or 0 %}
+  {% set cost = card.cost_basis or 0 %}
+  {% set shares = card.shares or 0 %}
+  {% set pnl_pct = ((price - cost) / cost * 100) if cost else 0 %}
+  {% set pnl_abs = (price - cost) * shares %}
+  {% set rec = card.recommendation or 'HOLD' %}
+  {% set hn = handoff_notes.get(ticker) %}
+
+  <div class="card" onclick="location.href='/ticker/{{ ticker }}'">
+    <div class="card-header">
+      <span class="ticker">{{ ticker }}</span>
+      <span class="badge badge-{{ rec }}">{{ rec }}</span>
+      <span class="confidence">{{ card.confidence or '' }}</span>
+    </div>
+
+    <div class="card-metrics">
+      <div class="metric">
+        <div class="mlabel">Price</div>
+        <div class="mvalue">{{ '%.2f'|format(price) }}</div>
+      </div>
+      <div class="metric">
+        <div class="mlabel">Cost</div>
+        <div class="mvalue">{{ '%.2f'|format(cost) }}</div>
+      </div>
+      <div class="metric">
+        <div class="mlabel">P&amp;L %</div>
+        <div class="mvalue {{ 'pos' if pnl_pct >= 0 else 'neg' }}">
+          {{ '%+.1f'|format(pnl_pct) }}%
+        </div>
+      </div>
+      <div class="metric">
+        <div class="mlabel">P&amp;L £</div>
+        <div class="mvalue {{ 'pos' if pnl_abs >= 0 else 'neg' }}">
+          {{ '%+.2f'|format(pnl_abs) }}
+        </div>
+      </div>
+      <div class="metric">
+        <div class="mlabel">Shares</div>
+        <div class="mvalue">{{ shares }}</div>
+      </div>
+      <div class="metric">
+        <div class="mlabel">30d Target</div>
+        <div class="mvalue">{{ '%.2f'|format(card.price_target_30d) if card.price_target_30d else '—' }}</div>
+      </div>
+    </div>
+
+    <div class="card-body">
+      <div class="reasoning">{{ card.reasoning or '' }}</div>
+
+      {% if card.news_sentiment %}
+      <span class="sentiment-pill sentiment-{{ card.news_sentiment }}">
+        {{ card.news_sentiment }}
+      </span>
+      <div class="news-summary">{{ card.news_summary or '' }}</div>
+      {% endif %}
+
+      <div class="three-col">
+        <div>
+          <div class="col-head cat">Catalysts</div>
+          <ul class="col-list">
+            {% for c in (card.catalysts or [])[:3] %}<li>{{ c }}</li>{% endfor %}
+          </ul>
+        </div>
+        <div>
+          <div class="col-head risk">Risks</div>
+          <ul class="col-list">
+            {% for r in (card.risks or [])[:3] %}<li>{{ r }}</li>{% endfor %}
+          </ul>
+        </div>
+        <div>
+          <div class="col-head worry">Worries</div>
+          <ul class="col-list">
+            {% for w in (card.worries or [])[:3] %}<li>{{ w }}</li>{% endfor %}
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    {% if card.price_target_30d %}
+    <div class="target-bar">
+      <span>Target:</span>
+      <strong>{{ '%.2f'|format(card.price_target_30d) }}</strong>
+      <span>Range:</span>
+      <strong>{{ '%.2f'|format(card.price_target_lo or 0) }} – {{ '%.2f'|format(card.price_target_hi or 0) }}</strong>
+      <span>90d:</span>
+      <strong>{{ card.outlook_90d or '' }}</strong>
+    </div>
+    {% endif %}
+
+    {% if hn %}
+    <div class="handoff-bar">
+      <span><span class="hb-label">🧠</span> {{ hn.thesis_summary or '' }}</span>
+      {% if hn.watch_items %}
+      <span>👁 {{ hn.watch_items | join(' · ') }}</span>
+      {% endif %}
+    </div>
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+
+<script>
+  let polling = false;
+
+  function fmt(n, prefix='') {
+    if (n == null) return '—';
+    const abs = Math.abs(n);
+    const s = abs >= 1000 ? (abs/1000).toFixed(1)+'k' : abs.toFixed(2);
+    return (n < 0 ? '-' : (prefix || '')) + s;
+  }
+
+  async function loadSummary() {
+    try {
+      const r = await fetch('/api/dashboard');
+      const d = await r.json();
+      const s = d.summary;
+      document.getElementById('s-value').textContent = '£' + fmt(s.total_value);
+      document.getElementById('s-cost').textContent  = '£' + fmt(s.total_cost);
+      const pnlEl = document.getElementById('s-pnl');
+      pnlEl.textContent = (s.total_pnl >= 0 ? '+' : '') + '£' + fmt(s.total_pnl);
+      pnlEl.className = 'value ' + (s.total_pnl >= 0 ? 'pos' : 'neg');
+      const pctEl = document.getElementById('s-pnl-pct');
+      pctEl.textContent = (s.total_pnl_pct >= 0 ? '+' : '') + s.total_pnl_pct + '%';
+      pctEl.className = 'value ' + (s.total_pnl_pct >= 0 ? 'pos' : 'neg');
+      document.getElementById('s-count').textContent = s.position_count;
+    } catch(e) {}
+  }
+
+  async function pollStatus() {
+    try {
+      const r = await fetch('/api/status');
+      const d = await r.json();
+      const banner = document.getElementById('status-banner');
+      const logEl = document.getElementById('log-lines');
+      const btn = document.getElementById('run-btn');
+
+      if (d.status === 'running') {
+        banner.className = 'visible';
+        const lines = d.progress || [];
+        logEl.textContent = lines.length ? lines[lines.length - 1] : 'Running…';
+        btn.disabled = true;
+        document.getElementById('nav-status').textContent = 'Analysis running…';
+        if (!polling) { polling = true; setTimeout(pollStatus, 2000); }
+      } else {
+        banner.className = '';
+        btn.disabled = false;
+        document.getElementById('nav-status').textContent =
+          d.status === 'done' ? 'Last run complete ✓' : '';
+        if (polling && d.status !== 'running') {
+          polling = false;
+          location.reload();
+        }
+      }
+    } catch(e) {
+      setTimeout(pollStatus, 5000);
+    }
+  }
+
+  async function triggerRun() {
+    const btn = document.getElementById('run-btn');
+    btn.disabled = true;
+    try {
+      const r = await fetch('/api/run', { method: 'POST' });
+      if (r.ok) {
+        polling = true;
+        pollStatus();
+      } else {
+        const d = await r.json();
+        alert(d.error || 'Failed to start run');
+        btn.disabled = false;
+      }
+    } catch(e) {
+      alert('Request failed');
+      btn.disabled = false;
+    }
+  }
+
+  // Init
+  loadSummary();
+  pollStatus();
+</script>
+</body>
+</html>

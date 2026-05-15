@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sync — Stock Analyzer</title>
+  <style>
+    :root{--bg:#0f1117;--surface:#1a1d2e;--surface2:#242740;--border:#2d3156;
+          --text:#e2e4f0;--muted:#7b7fa8;--buy:#2196f3;--pos:#4caf50;--neg:#ef5350}
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{background:var(--bg);color:var(--text);font-family:system-ui,sans-serif;font-size:14px}
+    a{color:var(--buy);text-decoration:none}a:hover{text-decoration:underline}
+    nav{background:var(--surface);border-bottom:1px solid var(--border);padding:12px 24px;
+        display:flex;align-items:center;gap:24px}
+    nav .logo{font-weight:700;font-size:16px}
+    nav a{color:var(--muted);font-size:13px}
+    .page{padding:24px;max-width:900px}
+    h1{font-size:20px;margin-bottom:16px}
+    .section{background:var(--surface);border:1px solid var(--border);border-radius:10px;
+             padding:16px;margin-bottom:16px}
+    .section h2{font-size:14px;color:var(--muted);text-transform:uppercase;
+                letter-spacing:.4px;margin-bottom:12px}
+    .status-row{display:flex;align-items:center;gap:16px;margin-bottom:16px}
+    .dot{width:8px;height:8px;border-radius:50%;background:var(--pos)}
+    .dot.off{background:var(--neg)}
+    button{cursor:pointer;border:none;border-radius:6px;padding:8px 16px;
+           font-size:13px;font-weight:600;background:var(--buy);color:#fff}
+    button:hover{opacity:.85}button:disabled{opacity:.4}
+    table{width:100%;border-collapse:collapse}
+    th{background:var(--surface2);padding:8px 12px;text-align:left;font-size:11px;
+       text-transform:uppercase;letter-spacing:.4px;color:var(--muted)}
+    td{padding:8px 12px;border-top:1px solid var(--border)}
+    .buy{color:var(--pos)}.sell{color:var(--neg)}
+    .empty{color:var(--muted);padding:20px 0}
+  </style>
+</head>
+<body>
+<nav>
+  <span class="logo">📈 Stock Analyzer</span>
+  <a href="/">Dashboard</a>
+  <a href="/history">History</a>
+  <a href="/sync">Sync</a>
+</nav>
+<div class="page">
+  <h1>Trading 212 Sync</h1>
+
+  <div class="section">
+    <h2>Status</h2>
+    <div class="status-row">
+      <div class="dot {{ '' if t212_available else 'off' }}"></div>
+      <span>{{ 'Connected' if t212_available else 'No API key configured (set TRADING212_API_KEY)' }}</span>
+    </div>
+    <p style="color:var(--muted);font-size:12px;margin-bottom:12px">
+      Last sync: {{ last_sync[:19].replace('T',' ') if last_sync else 'Never' }}
+    </p>
+    <button id="sync-btn" onclick="doSync()" {{ 'disabled' if not t212_available }}>
+      Sync Now
+    </button>
+    <span id="sync-msg" style="margin-left:12px;font-size:12px;color:var(--muted)"></span>
+  </div>
+
+  <div class="section">
+    <h2>Recent trades (last 50)</h2>
+    {% if trades %}
+    <table>
+      <thead>
+        <tr><th>Date</th><th>Ticker</th><th>Action</th>
+            <th>Qty</th><th>Price</th><th>Total</th></tr>
+      </thead>
+      <tbody>
+      {% for t in trades %}
+        <tr>
+          <td>{{ (t.traded_at or '')[:10] }}</td>
+          <td>{{ t.ticker }}</td>
+          <td class="{{ 'buy' if t.action == 'BUY' else 'sell' }}">{{ t.action }}</td>
+          <td>{{ t.quantity }}</td>
+          <td>{{ '%.4f'|format(t.price) }}</td>
+          <td>{{ '%.2f'|format(t.total_value) }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="empty">No trades imported yet.</p>
+    {% endif %}
+  </div>
+
+  {% if owned_history %}
+  <div class="section">
+    <h2>Closed positions</h2>
+    <table>
+      <thead>
+        <tr><th>Ticker</th><th>First Bought</th><th>Sold</th>
+            <th>Avg Cost</th><th>Realised P&L</th></tr>
+      </thead>
+      <tbody>
+      {% for o in owned_history %}
+        <tr>
+          <td>{{ o.ticker }}</td>
+          <td>{{ (o.first_bought or '')[:10] }}</td>
+          <td>{{ (o.fully_sold_at or '')[:10] }}</td>
+          <td>{{ '%.4f'|format(o.avg_cost) if o.avg_cost else '—' }}</td>
+          <td style="color:{{ '#4caf50' if (o.realised_pl or 0) >= 0 else '#ef5350' }}">
+            {{ ('%+.2f'|format(o.realised_pl)) if o.realised_pl is not none else '—' }}
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+</div>
+
+<script>
+async function doSync() {
+  const btn = document.getElementById('sync-btn');
+  const msg = document.getElementById('sync-msg');
+  btn.disabled = true;
+  msg.textContent = 'Syncing…';
+  try {
+    const r = await fetch('/api/sync/t212', { method: 'POST' });
+    if (r.ok) {
+      msg.textContent = 'Sync started — reload in a few seconds.';
+      setTimeout(() => location.reload(), 5000);
+    } else {
+      const d = await r.json();
+      msg.textContent = 'Error: ' + (d.error || 'unknown');
+      btn.disabled = false;
+    }
+  } catch(e) {
+    msg.textContent = 'Request failed';
+    btn.disabled = false;
+  }
+}
+</script>
+</body>
+</html>

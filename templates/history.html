@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>History — Stock Analyzer</title>
+  <style>
+    :root { --bg:#0f1117;--surface:#1a1d2e;--surface2:#242740;--border:#2d3156;
+            --text:#e2e4f0;--muted:#7b7fa8;--buy:#2196f3;--sell:#ef5350;
+            --hold:#78909c;--watch:#ff9800;--pos:#4caf50;--neg:#ef5350; }
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{background:var(--bg);color:var(--text);font-family:system-ui,sans-serif;font-size:14px}
+    a{color:var(--buy);text-decoration:none}a:hover{text-decoration:underline}
+    nav{background:var(--surface);border-bottom:1px solid var(--border);padding:12px 24px;
+        display:flex;align-items:center;gap:24px}
+    nav .logo{font-weight:700;font-size:16px}
+    nav a{color:var(--muted);font-size:13px}
+    .page{padding:24px;max-width:1000px}
+    h1{font-size:20px;margin-bottom:16px}
+    table{width:100%;border-collapse:collapse;background:var(--surface);
+          border-radius:10px;overflow:hidden;border:1px solid var(--border)}
+    th{background:var(--surface2);padding:10px 16px;text-align:left;
+       font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:var(--muted)}
+    td{padding:10px 16px;border-top:1px solid var(--border)}
+    tr:hover td{background:var(--surface2)}
+    .badge{padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700}
+    .badge-done{background:rgba(76,175,80,.2);color:#4caf50}
+    .badge-error{background:rgba(239,83,80,.2);color:#ef5350}
+    .badge-running{background:rgba(33,150,243,.2);color:#2196f3}
+    .empty{padding:60px;text-align:center;color:var(--muted)}
+  </style>
+</head>
+<body>
+<nav>
+  <span class="logo">📈 Stock Analyzer</span>
+  <a href="/">Dashboard</a>
+  <a href="/history">History</a>
+  <a href="/sync">Sync</a>
+</nav>
+<div class="page">
+  <h1>Analysis History</h1>
+  {% if runs %}
+  <table>
+    <thead>
+      <tr>
+        <th>Run #</th><th>Started</th><th>Finished</th>
+        <th>Tickers</th><th>Status</th><th></th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for run in runs %}
+      <tr>
+        <td>#{{ run.id }}</td>
+        <td>{{ run.started_at[:19].replace('T',' ') if run.started_at else '—' }}</td>
+        <td>{{ run.finished_at[:19].replace('T',' ') if run.finished_at else '—' }}</td>
+        <td>{{ run.ticker_count or 0 }}</td>
+        <td><span class="badge badge-{{ run.status }}">{{ run.status }}</span></td>
+        <td><a href="#" onclick="loadRun({{ run.id }});return false">View</a></td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="empty">No runs yet.</div>
+  {% endif %}
+</div>
+
+<div id="modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);
+     overflow:auto;padding:40px 24px" onclick="closeModal(event)">
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;
+              max-width:900px;margin:auto;padding:24px" onclick="event.stopPropagation()">
+    <div style="display:flex;justify-content:space-between;margin-bottom:16px">
+      <h2 id="modal-title">Run detail</h2>
+      <button onclick="closeModal()" style="background:none;border:none;color:var(--muted);
+              font-size:20px;cursor:pointer">✕</button>
+    </div>
+    <div id="modal-body"></div>
+  </div>
+</div>
+
+<script>
+async function loadRun(id) {
+  const r = await fetch('/api/run/' + id);
+  const d = await r.json();
+  document.getElementById('modal-title').textContent = 'Run #' + id + ' — ' + (d.run.status || '');
+  let html = '<table style="width:100%;border-collapse:collapse">';
+  html += '<tr style="background:var(--surface2)"><th style="padding:8px;text-align:left">Ticker</th>'
+        + '<th>Rec</th><th>Confidence</th><th>Price</th><th>Target</th><th>P&L %</th></tr>';
+  for (const a of d.analyses) {
+    const price = a.current_price || 0, cost = a.cost_basis || 0;
+    const pnl = cost ? ((price-cost)/cost*100).toFixed(1) : '—';
+    html += `<tr><td style="padding:8px"><a href="/ticker/${a.ticker}">${a.ticker}</a></td>`
+          + `<td style="text-align:center">${a.recommendation||'—'}</td>`
+          + `<td style="text-align:center">${a.confidence||'—'}</td>`
+          + `<td style="text-align:right">${price.toFixed(2)}</td>`
+          + `<td style="text-align:right">${a.price_target_30d?.toFixed(2)||'—'}</td>`
+          + `<td style="text-align:right;color:${parseFloat(pnl)>=0?'#4caf50':'#ef5350'}">`
+          + `${pnl !== '—' ? (parseFloat(pnl)>=0?'+':'')+pnl+'%' : '—'}</td></tr>`;
+  }
+  html += '</table>';
+  if (d.run.log) {
+    html += '<pre style="margin-top:16px;background:var(--surface2);padding:12px;'
+          + 'border-radius:6px;font-size:11px;color:var(--muted);max-height:200px;overflow:auto">'
+          + d.run.log + '</pre>';
+  }
+  document.getElementById('modal-body').innerHTML = html;
+  document.getElementById('modal').style.display = 'block';
+}
+
+function closeModal(e) {
+  if (!e || e.target === document.getElementById('modal'))
+    document.getElementById('modal').style.display = 'none';
+}
+</script>
+</body>
+</html>
