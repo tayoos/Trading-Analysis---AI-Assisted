@@ -20,9 +20,16 @@ _SYSTEM_PROMPT = """You are an expert equity analyst AI assistant. Your job is t
 
 Output ONLY a valid JSON object — no markdown fences, no preamble, no explanation outside the JSON.
 
+Recommendation values and their meaning:
+- BUY        = add to or open this position now
+- SELL       = exit or reduce this position now
+- HOLD_LONG  = hold with conviction — long-term thesis intact, do not sell despite short-term volatility
+- HOLD_SHORT = hold cautiously — reassess soon, consider reducing if thesis weakens
+- WATCH      = not currently held but worth monitoring for a future entry
+
 JSON schema (all fields required):
 {
-  "recommendation": "BUY" | "HOLD" | "SELL" | "WATCH",
+  "recommendation": "BUY" | "SELL" | "HOLD_LONG" | "HOLD_SHORT" | "WATCH",
   "price_target_30d": <number>,
   "price_target_range": [<lo number>, <hi number>],
   "confidence": "HIGH" | "MEDIUM" | "LOW",
@@ -44,9 +51,11 @@ JSON schema (all fields required):
 
 Guidelines:
 - Base targets on realistic near-term fundamentals, not wishful thinking.
-- WATCH = interesting but not a current position worth acting on.
-- trend_flags: note if your recommendation differs from the previous run (e.g. "HOLD→BUY").
-- keep watch_items specific and actionable (earnings date, product launch, macro event).
+- Prefer HOLD_LONG over HOLD when you have high conviction the thesis is intact.
+- Prefer HOLD_SHORT over HOLD when near-term risk is elevated or the thesis is weakening.
+- trend_flags: note if your recommendation differs from the previous run (e.g. "HOLD_LONG→SELL").
+- watch_items: be specific and actionable — include earnings dates, product launches, macro events.
+- Use fundamentals (P/E vs sector, EPS growth, analyst consensus) alongside price action.
 - All prices in the position's native currency."""
 
 
@@ -140,7 +149,7 @@ class StockAnalyzer:
                 {
                     "type": "text",
                     "text": _SYSTEM_PROMPT,
-                    "cache_control": {"type": "ephemeral"},  # cache the system prompt
+                    "cache_control": {"type": "ephemeral"},
                 }
             ],
             messages=[{"role": "user", "content": prompt}],
@@ -149,12 +158,17 @@ class StockAnalyzer:
         raw = response.content[0].text.strip()
         result = json.loads(raw)
 
-        # Augment with live position data for storage
-        result["current_price"] = market_data.get("current_price")
-        result["cost_basis"] = holding.get("avg_cost")
-        result["shares"] = holding.get("shares")
+        # Persist position + fundamental data alongside Claude's output
+        result["current_price"]       = market_data.get("current_price")
+        result["cost_basis"]          = holding.get("avg_cost")
+        result["shares"]              = holding.get("shares")
+        result["pe_ratio"]            = market_data.get("pe_ratio")
+        result["eps_growth_pct"]      = market_data.get("eps_growth_pct")
+        result["analyst_target_mean"] = market_data.get("analyst_target_mean")
+        result["analyst_consensus"]   = market_data.get("analyst_consensus")
+        result["next_earnings"]       = market_data.get("next_earnings")
 
-        # Populate trend_flags by comparing to previous recommendation
+        # Detect recommendation changes and record as trend flags
         prev = self.db.get_ticker_history(ticker, limit=1)
         if prev:
             prev_rec = prev[0].get("recommendation")
@@ -169,7 +183,6 @@ class StockAnalyzer:
     # ── Background runner ──────────────────────────────────────────────────────
 
     def run_in_background(self, holdings: list[dict]) -> None:
-        """Start analysis in a daemon thread."""
         t = threading.Thread(
             target=self.run_analysis,
             args=(holdings,),
@@ -179,7 +192,7 @@ class StockAnalyzer:
         t.start()
 
 
-# ── Helpers ────────────────────────────────────────────────────────────────────
+# ── Market data ────────────────────────────────────────────────────────────────
 
 def _ts() -> str:
     return datetime.now(timezone.utc).strftime("%H:%M:%S")
@@ -187,27 +200,66 @@ def _ts() -> str:
 
 def _fetch_market_data(ticker: str) -> dict:
     try:
-        info = yf.Ticker(ticker)
-        fast = info.fast_info
-        hist = info.history(period="5d")
-        news = info.news or []
+        stock = yf.Ticker(ticker)
+        fast = stock.fast_info
+        info = stock.info  # full info — P/E, EPS, analyst targets, earnings date
+        hist = stock.history(period="30d")
+        news = stock.news or []
 
         prices = hist["Close"].tolist() if not hist.empty else []
         current_price = float(fast.last_price) if fast.last_price else (prices[-1] if prices else None)
+
+        # 30-day closes for sparkline (stored in market data, not passed to Claude)
+        closes_30d = [round(p, 4) for p in prices]
+
+        # Last 10 closes for prompt context (enough for trend, not too many tokens)
+        recent_closes = closes_30d[-10:] if closes_30d else []
 
         headlines = [
             n.get("content", {}).get("title", n.get("title", ""))
             for n in news[:5]
         ]
 
+        # ── Fundamentals ──────────────────────────────────────────────────────
+        pe_ratio = info.get("trailingPE") or info.get("forwardPE")
+        eps_ttm = info.get("trailingEps")
+        eps_growth = info.get("earningsGrowth") or info.get("revenueGrowth")
+
+        # Analyst consensus
+        target_mean = info.get("targetMeanPrice")
+        target_high = info.get("targetHighPrice")
+        target_low  = info.get("targetLowPrice")
+        analyst_count = info.get("numberOfAnalystOpinions")
+        recommendation_key = info.get("recommendationKey", "")  # e.g. "buy", "hold"
+
+        # Next earnings date (epoch → ISO string)
+        earnings_ts = info.get("earningsTimestamp") or info.get("earningsTimestampStart")
+        earnings_date: Optional[str] = None
+        if earnings_ts:
+            try:
+                earnings_date = datetime.fromtimestamp(earnings_ts, tz=timezone.utc).strftime("%Y-%m-%d")
+            except Exception:
+                pass
+
         return {
             "ticker": ticker,
             "current_price": current_price,
             "week_52_high": float(fast.fifty_two_week_high) if fast.fifty_two_week_high else None,
-            "week_52_low": float(fast.fifty_two_week_low) if fast.fifty_two_week_low else None,
-            "market_cap": float(fast.market_cap) if fast.market_cap else None,
-            "recent_closes": [round(p, 4) for p in prices[-5:]],
+            "week_52_low":  float(fast.fifty_two_week_low)  if fast.fifty_two_week_low  else None,
+            "market_cap":   float(fast.market_cap)          if fast.market_cap           else None,
+            "recent_closes": recent_closes,
+            "closes_30d":    closes_30d,       # for sparkline endpoint only
             "recent_headlines": headlines,
+            # Fundamentals
+            "pe_ratio":          round(pe_ratio, 2) if pe_ratio else None,
+            "eps_ttm":           round(eps_ttm, 4)  if eps_ttm  else None,
+            "eps_growth_pct":    round(eps_growth * 100, 1) if eps_growth else None,
+            "analyst_target_mean": round(target_mean, 2) if target_mean else None,
+            "analyst_target_high": round(target_high, 2) if target_high else None,
+            "analyst_target_low":  round(target_low, 2)  if target_low  else None,
+            "analyst_count":       analyst_count,
+            "analyst_consensus":   recommendation_key,
+            "next_earnings":       earnings_date,
         }
     except Exception as exc:
         logger.warning("yfinance failed for %s: %s", ticker, exc)
@@ -217,8 +269,8 @@ def _fetch_market_data(ticker: str) -> dict:
 def _build_prompt(holding: dict, market_data: dict, handoff_note: Optional[dict]) -> str:
     ticker = holding["ticker"]
     shares = holding.get("shares", 0)
-    cost = holding.get("avg_cost", 0)
-    price = market_data.get("current_price") or 0
+    cost   = holding.get("avg_cost", 0)
+    price  = market_data.get("current_price") or 0
     pnl_pct = ((price - cost) / cost * 100) if cost else 0
     pnl_abs = (price - cost) * shares if (price and cost) else 0
 
@@ -250,10 +302,30 @@ def _build_prompt(holding: dict, market_data: dict, handoff_note: Optional[dict]
     if market_data.get("week_52_high"):
         lines.append(f"52w range: {market_data['week_52_low']:.2f} – {market_data['week_52_high']:.2f}")
     if market_data.get("recent_closes"):
-        lines.append("Recent closes (5d): " + ", ".join(str(p) for p in market_data["recent_closes"]))
+        lines.append("Recent closes (10d): " + ", ".join(str(p) for p in market_data["recent_closes"]))
     if market_data.get("market_cap"):
         mc = market_data["market_cap"]
         lines.append(f"Market cap: {mc/1e9:.1f}B" if mc > 1e9 else f"Market cap: {mc/1e6:.0f}M")
+
+    lines.append("\n### Fundamentals")
+    if market_data.get("pe_ratio"):
+        lines.append(f"P/E ratio: {market_data['pe_ratio']}")
+    if market_data.get("eps_ttm"):
+        lines.append(f"EPS (TTM): {market_data['eps_ttm']}")
+    if market_data.get("eps_growth_pct") is not None:
+        lines.append(f"EPS/revenue growth: {market_data['eps_growth_pct']:+.1f}%")
+    if market_data.get("next_earnings"):
+        lines.append(f"Next earnings date: {market_data['next_earnings']}")
+
+    if market_data.get("analyst_target_mean"):
+        lines.append("\n### Analyst consensus")
+        lines.append(
+            f"Mean target: {market_data['analyst_target_mean']}  "
+            f"Range: {market_data.get('analyst_target_low', '?')} – {market_data.get('analyst_target_high', '?')}  "
+            f"({market_data.get('analyst_count', '?')} analysts)"
+        )
+        if market_data.get("analyst_consensus"):
+            lines.append(f"Consensus: {market_data['analyst_consensus'].upper()}")
 
     headlines = market_data.get("recent_headlines", [])
     if headlines:

@@ -1,12 +1,16 @@
 services:
   stock-analyzer:
-    image: ghcr.io/YOURUSERNAME/stock-analyzer:latest
+    image: ghcr.io/tayoos/trading-analysis---ai-assisted:latest
     container_name: stock-analyzer
     ports:
       - "8765:8765"
     environment:
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - TRADING212_API_KEY=${TRADING212_API_KEY}
+      - REPORTS_ENCRYPTION_KEY=${REPORTS_ENCRYPTION_KEY}
+      - REPORTS_RETENTION_DAYS=365
+      - SCHEDULE_DAYS=0,2,5
+      - SCHEDULE_HOUR=7
     volumes:
       - /mnt/user/appdata/stock-analyzer/db:/data/db
       - /mnt/user/appdata/stock-analyzer/reports:/data/reports
@@ -18,7 +22,9 @@ services:
     container_name: watchtower-stock-analyzer
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-      # Mount GHCR credentials if image is private
-      # - /root/.docker/config.json:/config.json
+      # Private GHCR image: mount your Docker credentials so Watchtower can pull.
+      # One-time setup on Unraid: run  docker login ghcr.io -u tayoos  first,
+      # then this file is created automatically.
+      - /root/.docker/config.json:/config.json
     command: stock-analyzer --interval 300
     restart: unless-stopped

@@ -4,11 +4,13 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Stock Analyzer</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
   <style>
     :root {
       --bg: #0f1117; --surface: #1a1d2e; --surface2: #242740;
       --border: #2d3156; --text: #e2e4f0; --muted: #7b7fa8;
-      --buy: #2196f3; --hold: #78909c; --sell: #ef5350; --watch: #ff9800;
+      --buy: #2196f3; --hold: #78909c; --sell: #ef5350;
+      --hold-long: #4caf50; --hold-short: #ff9800; --watch: #9c27b0;
       --pos: #4caf50; --neg: #ef5350; --neu: #78909c;
       --radius: 10px; --gap: 14px;
     }
@@ -18,68 +20,63 @@
     a { color: var(--buy); text-decoration: none; }
     a:hover { text-decoration: underline; }
 
-    /* ── Nav ── */
     nav { background: var(--surface); border-bottom: 1px solid var(--border);
           padding: 12px 24px; display: flex; align-items: center; gap: 24px; }
-    nav .logo { font-weight: 700; font-size: 16px; letter-spacing: .5px; }
+    nav .logo { font-weight: 700; font-size: 16px; }
     nav a { color: var(--muted); font-size: 13px; }
     nav a:hover { color: var(--text); text-decoration: none; }
     nav .spacer { flex: 1; }
 
-    /* ── Status banner ── */
     #status-banner { display: none; background: var(--surface2);
-                     border-bottom: 1px solid var(--border);
-                     padding: 8px 24px; font-size: 13px; }
+                     border-bottom: 1px solid var(--border); padding: 8px 24px; font-size: 13px; }
     #status-banner.visible { display: flex; align-items: center; gap: 10px; }
     .spinner { width: 14px; height: 14px; border: 2px solid var(--border);
                border-top-color: var(--buy); border-radius: 50%;
                animation: spin .7s linear infinite; }
     @keyframes spin { to { transform: rotate(360deg); } }
     #log-lines { font-family: monospace; font-size: 12px; color: var(--muted);
-                 max-width: 700px; overflow: hidden; white-space: nowrap;
-                 text-overflow: ellipsis; }
+                 max-width: 700px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 
-    /* ── Summary bar ── */
-    .summary-bar { display: flex; gap: var(--gap); padding: 16px 24px;
-                   flex-wrap: wrap; }
+    .summary-bar { display: flex; gap: var(--gap); padding: 16px 24px; flex-wrap: wrap; }
     .summary-card { background: var(--surface); border: 1px solid var(--border);
-                    border-radius: var(--radius); padding: 12px 18px;
-                    min-width: 150px; }
+                    border-radius: var(--radius); padding: 12px 18px; min-width: 150px; }
     .summary-card .label { font-size: 11px; color: var(--muted);
                            text-transform: uppercase; letter-spacing: .5px; }
     .summary-card .value { font-size: 22px; font-weight: 700; margin-top: 4px; }
     .summary-card .value.pos { color: var(--pos); }
     .summary-card .value.neg { color: var(--neg); }
 
-    /* ── Controls ── */
     .controls { padding: 0 24px 12px; display: flex; align-items: center; gap: 10px; }
     button { cursor: pointer; border: none; border-radius: 6px; padding: 8px 16px;
              font-size: 13px; font-weight: 600; transition: opacity .15s; }
     button:hover { opacity: .85; }
     button:disabled { opacity: .4; cursor: not-allowed; }
-    .btn-primary { background: var(--buy); color: #fff; }
-    .btn-secondary { background: var(--surface2); color: var(--text);
-                     border: 1px solid var(--border); }
+    .btn-primary   { background: var(--buy); color: #fff; }
+    .btn-secondary { background: var(--surface2); color: var(--text); border: 1px solid var(--border); }
 
-    /* ── Grid ── */
     .grid { display: grid; gap: var(--gap); padding: 0 24px 24px;
             grid-template-columns: repeat(auto-fill, minmax(380px, 1fr)); }
 
-    /* ── Card ── */
     .card { background: var(--surface); border: 1px solid var(--border);
             border-radius: var(--radius); overflow: hidden;
             transition: border-color .2s; cursor: pointer; }
     .card:hover { border-color: var(--buy); }
+
     .card-header { display: flex; align-items: center; gap: 10px;
                    padding: 12px 16px; border-bottom: 1px solid var(--border); }
     .ticker { font-size: 18px; font-weight: 700; flex: 1; }
-    .badge { padding: 3px 10px; border-radius: 4px; font-size: 12px;
-             font-weight: 700; letter-spacing: .5px; }
-    .badge-BUY  { background: var(--buy);  color: #fff; }
-    .badge-HOLD { background: var(--hold); color: #fff; }
-    .badge-SELL { background: var(--sell); color: #fff; }
-    .badge-WATCH{ background: var(--watch);color: #000; }
+    .badge { padding: 3px 10px; border-radius: 4px; font-size: 12px; font-weight: 700; letter-spacing: .5px; }
+    .badge-BUY        { background: var(--buy);        color: #fff; }
+    .badge-SELL       { background: var(--sell);       color: #fff; }
+    .badge-HOLD_LONG  { background: var(--hold-long);  color: #fff; }
+    .badge-HOLD_SHORT { background: var(--hold-short); color: #000; }
+    .badge-HOLD       { background: var(--hold);       color: #fff; }
+    .badge-WATCH      { background: var(--watch);      color: #fff; }
     .confidence { font-size: 11px; color: var(--muted); }
+
+    /* sparkline sits under the header */
+    .sparkline-wrap { padding: 6px 16px 0; height: 50px; position: relative; }
+    .sparkline-wrap canvas { display: block; }
 
     .card-metrics { display: grid; grid-template-columns: repeat(3, 1fr);
                     gap: 1px; background: var(--border); }
@@ -90,42 +87,41 @@
     .metric .mvalue.pos { color: var(--pos); }
     .metric .mvalue.neg { color: var(--neg); }
 
+    /* fundamentals strip */
+    .fund-strip { display: flex; gap: 16px; padding: 7px 16px;
+                  background: var(--surface2); border-bottom: 1px solid var(--border);
+                  font-size: 11px; color: var(--muted); flex-wrap: wrap; }
+    .fund-strip .fitem strong { color: var(--text); }
+
     .card-body { padding: 12px 16px; }
-    .reasoning { font-size: 13px; line-height: 1.5; color: var(--text);
-                 margin-bottom: 10px; }
+    .reasoning { font-size: 13px; line-height: 1.5; color: var(--text); margin-bottom: 10px; }
     .sentiment-pill { display: inline-block; padding: 2px 8px; border-radius: 4px;
                       font-size: 11px; font-weight: 600; margin-bottom: 8px; }
-    .sentiment-POSITIVE { background: rgba(76,175,80,.2); color: var(--pos); }
+    .sentiment-POSITIVE { background: rgba(76,175,80,.2);   color: var(--pos); }
     .sentiment-NEUTRAL  { background: rgba(120,144,156,.2); color: var(--neu); }
-    .sentiment-NEGATIVE { background: rgba(239,83,80,.2); color: var(--neg); }
-
+    .sentiment-NEGATIVE { background: rgba(239,83,80,.2);   color: var(--neg); }
     .news-summary { font-size: 12px; color: var(--muted); margin-bottom: 10px; }
 
-    .three-col { display: grid; grid-template-columns: repeat(3, 1fr);
-                 gap: 8px; margin-bottom: 10px; }
+    .three-col { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 10px; }
     .col-head { font-size: 10px; font-weight: 700; text-transform: uppercase;
                 letter-spacing: .4px; margin-bottom: 4px; }
-    .col-head.cat  { color: var(--pos); }
-    .col-head.risk { color: var(--neg); }
-    .col-head.worry{ color: var(--watch); }
-    .col-list { font-size: 11px; color: var(--muted); line-height: 1.6;
-                list-style: none; }
+    .col-head.cat   { color: var(--pos); }
+    .col-head.risk  { color: var(--neg); }
+    .col-head.worry { color: var(--hold-short); }
+    .col-list { font-size: 11px; color: var(--muted); line-height: 1.6; list-style: none; }
     .col-list li::before { content: "•  "; color: var(--border); }
 
-    /* ── Handoff bar ── */
-    .handoff-bar { background: var(--surface2); border-top: 1px solid var(--border);
-                   padding: 8px 16px; font-size: 11px; color: var(--muted);
-                   display: flex; gap: 12px; flex-wrap: wrap; }
-    .handoff-bar .hb-label { color: var(--buy); font-weight: 600; }
-
-    /* ── Target bar ── */
     .target-bar { background: var(--surface2); padding: 8px 16px;
                   font-size: 12px; display: flex; gap: 16px; flex-wrap: wrap;
                   border-top: 1px solid var(--border); }
     .target-bar span { color: var(--muted); }
     .target-bar strong { color: var(--text); }
 
-    /* ── Empty state ── */
+    .handoff-bar { background: var(--surface2); border-top: 1px solid var(--border);
+                   padding: 8px 16px; font-size: 11px; color: var(--muted);
+                   display: flex; gap: 12px; flex-wrap: wrap; }
+    .handoff-bar .hb-label { color: var(--buy); font-weight: 600; }
+
     .empty { text-align: center; padding: 80px 24px; color: var(--muted); }
     .empty h2 { font-size: 20px; margin-bottom: 8px; color: var(--text); }
   </style>
@@ -146,7 +142,7 @@
   <div id="log-lines">Initialising…</div>
 </div>
 
-<div class="summary-bar" id="summary-bar">
+<div class="summary-bar">
   <div class="summary-card">
     <div class="label">Portfolio Value</div>
     <div class="value" id="s-value">—</div>
@@ -184,19 +180,24 @@
 
   {% for card in cards %}
   {% set ticker = card.ticker %}
-  {% set price = card.current_price or 0 %}
-  {% set cost = card.cost_basis or 0 %}
+  {% set price  = card.current_price or 0 %}
+  {% set cost   = card.cost_basis or 0 %}
   {% set shares = card.shares or 0 %}
   {% set pnl_pct = ((price - cost) / cost * 100) if cost else 0 %}
   {% set pnl_abs = (price - cost) * shares %}
   {% set rec = card.recommendation or 'HOLD' %}
-  {% set hn = handoff_notes.get(ticker) %}
+  {% set hn  = handoff_notes.get(ticker) %}
 
   <div class="card" onclick="location.href='/ticker/{{ ticker }}'">
     <div class="card-header">
       <span class="ticker">{{ ticker }}</span>
-      <span class="badge badge-{{ rec }}">{{ rec }}</span>
+      <span class="badge badge-{{ rec }}">{{ rec | replace('_', ' ') }}</span>
       <span class="confidence">{{ card.confidence or '' }}</span>
+    </div>
+
+    <!-- sparkline rendered by JS after page load -->
+    <div class="sparkline-wrap">
+      <canvas id="spark-{{ ticker }}" height="44"></canvas>
     </div>
 
     <div class="card-metrics">
@@ -230,34 +231,45 @@
       </div>
     </div>
 
+    {% if card.pe_ratio or card.analyst_target_mean or card.next_earnings %}
+    <div class="fund-strip">
+      {% if card.pe_ratio %}
+      <span class="fitem">P/E <strong>{{ card.pe_ratio }}</strong></span>
+      {% endif %}
+      {% if card.eps_growth_pct is not none %}
+      <span class="fitem">EPS growth <strong>{{ '%+.1f'|format(card.eps_growth_pct) }}%</strong></span>
+      {% endif %}
+      {% if card.analyst_target_mean %}
+      <span class="fitem">Analyst target <strong>{{ '%.2f'|format(card.analyst_target_mean) }}</strong>
+        {% if card.analyst_consensus %}<em>({{ card.analyst_consensus | upper }})</em>{% endif %}
+      </span>
+      {% endif %}
+      {% if card.next_earnings %}
+      <span class="fitem">Earnings <strong>{{ card.next_earnings }}</strong></span>
+      {% endif %}
+    </div>
+    {% endif %}
+
     <div class="card-body">
       <div class="reasoning">{{ card.reasoning or '' }}</div>
 
       {% if card.news_sentiment %}
-      <span class="sentiment-pill sentiment-{{ card.news_sentiment }}">
-        {{ card.news_sentiment }}
-      </span>
+      <span class="sentiment-pill sentiment-{{ card.news_sentiment }}">{{ card.news_sentiment }}</span>
       <div class="news-summary">{{ card.news_summary or '' }}</div>
       {% endif %}
 
       <div class="three-col">
         <div>
           <div class="col-head cat">Catalysts</div>
-          <ul class="col-list">
-            {% for c in (card.catalysts or [])[:3] %}<li>{{ c }}</li>{% endfor %}
-          </ul>
+          <ul class="col-list">{% for c in (card.catalysts or [])[:3] %}<li>{{ c }}</li>{% endfor %}</ul>
         </div>
         <div>
           <div class="col-head risk">Risks</div>
-          <ul class="col-list">
-            {% for r in (card.risks or [])[:3] %}<li>{{ r }}</li>{% endfor %}
-          </ul>
+          <ul class="col-list">{% for r in (card.risks or [])[:3] %}<li>{{ r }}</li>{% endfor %}</ul>
         </div>
         <div>
           <div class="col-head worry">Worries</div>
-          <ul class="col-list">
-            {% for w in (card.worries or [])[:3] %}<li>{{ w }}</li>{% endfor %}
-          </ul>
+          <ul class="col-list">{% for w in (card.worries or [])[:3] %}<li>{{ w }}</li>{% endfor %}</ul>
         </div>
       </div>
     </div>
@@ -288,37 +300,37 @@
 <script>
   let polling = false;
 
-  function fmt(n, prefix='') {
-    if (n == null) return '—';
-    const abs = Math.abs(n);
-    const s = abs >= 1000 ? (abs/1000).toFixed(1)+'k' : abs.toFixed(2);
-    return (n < 0 ? '-' : (prefix || '')) + s;
-  }
-
+  // ── Summary ──────────────────────────────────────────────────────────────────
   async function loadSummary() {
     try {
       const r = await fetch('/api/dashboard');
       const d = await r.json();
       const s = d.summary;
-      document.getElementById('s-value').textContent = '£' + fmt(s.total_value);
-      document.getElementById('s-cost').textContent  = '£' + fmt(s.total_cost);
-      const pnlEl = document.getElementById('s-pnl');
-      pnlEl.textContent = (s.total_pnl >= 0 ? '+' : '') + '£' + fmt(s.total_pnl);
-      pnlEl.className = 'value ' + (s.total_pnl >= 0 ? 'pos' : 'neg');
-      const pctEl = document.getElementById('s-pnl-pct');
-      pctEl.textContent = (s.total_pnl_pct >= 0 ? '+' : '') + s.total_pnl_pct + '%';
-      pctEl.className = 'value ' + (s.total_pnl_pct >= 0 ? 'pos' : 'neg');
+      document.getElementById('s-value').textContent = '£' + fmtNum(s.total_value);
+      document.getElementById('s-cost').textContent  = '£' + fmtNum(s.total_cost);
+      const pnlEl  = document.getElementById('s-pnl');
+      const pctEl  = document.getElementById('s-pnl-pct');
+      pnlEl.textContent  = (s.total_pnl >= 0 ? '+' : '') + '£' + fmtNum(Math.abs(s.total_pnl));
+      pnlEl.className    = 'value ' + (s.total_pnl >= 0 ? 'pos' : 'neg');
+      pctEl.textContent  = (s.total_pnl_pct >= 0 ? '+' : '') + s.total_pnl_pct + '%';
+      pctEl.className    = 'value ' + (s.total_pnl_pct >= 0 ? 'pos' : 'neg');
       document.getElementById('s-count').textContent = s.position_count;
     } catch(e) {}
   }
 
+  function fmtNum(n) {
+    if (n == null) return '—';
+    return Math.abs(n) >= 1000 ? (Math.abs(n)/1000).toFixed(1)+'k' : Math.abs(n).toFixed(2);
+  }
+
+  // ── Status polling ────────────────────────────────────────────────────────────
   async function pollStatus() {
     try {
       const r = await fetch('/api/status');
       const d = await r.json();
       const banner = document.getElementById('status-banner');
-      const logEl = document.getElementById('log-lines');
-      const btn = document.getElementById('run-btn');
+      const logEl  = document.getElementById('log-lines');
+      const btn    = document.getElementById('run-btn');
 
       if (d.status === 'running') {
         banner.className = 'visible';
@@ -326,7 +338,8 @@
         logEl.textContent = lines.length ? lines[lines.length - 1] : 'Running…';
         btn.disabled = true;
         document.getElementById('nav-status').textContent = 'Analysis running…';
-        if (!polling) { polling = true; setTimeout(pollStatus, 2000); }
+        if (!polling) { polling = true; }
+        setTimeout(pollStatus, 2000);
       } else {
         banner.className = '';
         btn.disabled = false;
@@ -360,6 +373,72 @@
       btn.disabled = false;
     }
   }
+
+  // ── Sparklines ────────────────────────────────────────────────────────────────
+  const REC_COLOURS = {
+    BUY: '#2196f3', SELL: '#ef5350',
+    HOLD_LONG: '#4caf50', HOLD_SHORT: '#ff9800',
+    HOLD: '#78909c', WATCH: '#9c27b0',
+  };
+
+  async function loadSparkline(ticker, costBasis, rec) {
+    const canvas = document.getElementById('spark-' + ticker);
+    if (!canvas) return;
+    try {
+      const r = await fetch('/api/sparkline/' + ticker);
+      const d = await r.json();
+      if (!d.closes || d.closes.length < 2) return;
+
+      const colour = REC_COLOURS[rec] || '#78909c';
+      const labels = d.closes.map((_, i) => i);
+
+      // cost basis reference line data
+      const costLine = costBasis ? d.closes.map(() => costBasis) : null;
+
+      new Chart(canvas, {
+        type: 'line',
+        data: {
+          labels,
+          datasets: [
+            {
+              data: d.closes,
+              borderColor: colour,
+              borderWidth: 1.5,
+              pointRadius: 0,
+              tension: 0.3,
+              fill: false,
+            },
+            ...(costLine ? [{
+              data: costLine,
+              borderColor: 'rgba(255,255,255,0.2)',
+              borderWidth: 1,
+              borderDash: [3, 3],
+              pointRadius: 0,
+              fill: false,
+            }] : []),
+          ],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          animation: false,
+          plugins: { legend: { display: false }, tooltip: { enabled: false } },
+          scales: {
+            x: { display: false },
+            y: { display: false },
+          },
+        },
+      });
+    } catch(e) {}
+  }
+
+  // Kick off sparklines for each card (staggered to avoid hammering yfinance)
+  const sparkJobs = [
+    {% for card in cards %}
+    { ticker: '{{ card.ticker }}', cost: {{ card.cost_basis or 0 }}, rec: '{{ card.recommendation or "HOLD" }}' },
+    {% endfor %}
+  ];
+  sparkJobs.forEach((j, i) => setTimeout(() => loadSparkline(j.ticker, j.cost, j.rec), i * 200));
 
   // Init
   loadSummary();

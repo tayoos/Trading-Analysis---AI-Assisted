@@ -47,25 +47,30 @@ class Database:
                 );
 
                 CREATE TABLE IF NOT EXISTS analyses (
-                    id              INTEGER PRIMARY KEY AUTOINCREMENT,
-                    run_id          INTEGER NOT NULL REFERENCES runs(id),
-                    ticker          TEXT NOT NULL,
-                    recommendation  TEXT,
-                    price_target    REAL,
-                    price_target_lo REAL,
-                    price_target_hi REAL,
-                    confidence      TEXT,
-                    reasoning       TEXT,
-                    news_sentiment  TEXT,
-                    news_summary    TEXT,
-                    catalysts       TEXT,   -- JSON array
-                    risks           TEXT,   -- JSON array
-                    worries         TEXT,   -- JSON array
-                    outlook_90d     TEXT,
-                    current_price   REAL,
-                    cost_basis      REAL,
-                    shares          REAL,
-                    created_at      TEXT NOT NULL
+                    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+                    run_id              INTEGER NOT NULL REFERENCES runs(id),
+                    ticker              TEXT NOT NULL,
+                    recommendation      TEXT,
+                    price_target        REAL,
+                    price_target_lo     REAL,
+                    price_target_hi     REAL,
+                    confidence          TEXT,
+                    reasoning           TEXT,
+                    news_sentiment      TEXT,
+                    news_summary        TEXT,
+                    catalysts           TEXT,   -- JSON array
+                    risks               TEXT,   -- JSON array
+                    worries             TEXT,   -- JSON array
+                    outlook_90d         TEXT,
+                    current_price       REAL,
+                    cost_basis          REAL,
+                    shares              REAL,
+                    pe_ratio            REAL,
+                    eps_growth_pct      REAL,
+                    analyst_target_mean REAL,
+                    analyst_consensus   TEXT,
+                    next_earnings       TEXT,
+                    created_at          TEXT NOT NULL
                 );
 
                 CREATE TABLE IF NOT EXISTS handoff_notes (
@@ -172,8 +177,10 @@ class Database:
                    (run_id, ticker, recommendation, price_target, price_target_lo,
                     price_target_hi, confidence, reasoning, news_sentiment,
                     news_summary, catalysts, risks, worries, outlook_90d,
-                    current_price, cost_basis, shares, created_at)
-                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    current_price, cost_basis, shares,
+                    pe_ratio, eps_growth_pct, analyst_target_mean,
+                    analyst_consensus, next_earnings, created_at)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (
                     run_id, ticker,
                     result.get("recommendation"),
@@ -191,6 +198,11 @@ class Database:
                     result.get("current_price"),
                     result.get("cost_basis"),
                     result.get("shares"),
+                    result.get("pe_ratio"),
+                    result.get("eps_growth_pct"),
+                    result.get("analyst_target_mean"),
+                    result.get("analyst_consensus"),
+                    result.get("next_earnings"),
                     _now(),
                 ),
             )
