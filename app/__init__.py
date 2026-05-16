@@ -11,6 +11,7 @@ from flask import Flask, Response, request
 from .analyzer import StockAnalyzer
 from .database import Database
 from .portfolio import PortfolioManager
+from .ratelimit import setup_rate_limiting
 from .routes import analysis_bp, dashboard_bp, history_bp, sync_bp
 from .sources.t212 import T212DataSource
 
@@ -34,8 +35,10 @@ def create_app() -> Flask:
     app.extensions["portfolio"] = portfolio
     app.extensions["analyzer"] = analyzer
 
-    # ── Auth ───────────────────────────────────────────────────────────────────
-    _setup_auth(app)
+    # ── Auth + rate limiting ───────────────────────────────────────────────────
+    trusted_networks = _parse_trusted_networks()
+    _setup_auth(app, trusted_networks)
+    setup_rate_limiting(app, trusted_networks)
 
     # ── Blueprints ─────────────────────────────────────────────────────────────
     app.register_blueprint(dashboard_bp)
@@ -49,44 +52,31 @@ def create_app() -> Flask:
     return app
 
 
-def _setup_auth(app: Flask) -> None:
-    """
-    Two-layer auth that works with or without a reverse proxy (Authelia/nginx/Caddy):
-
-    Layer 1 — Trusted networks (TRUSTED_NETWORKS env var):
-        Requests arriving from these IP ranges bypass the Basic Auth challenge.
-        Use this when Authelia or another proxy sits in front — add the proxy's
-        IP or internal subnet so authenticated requests pass through cleanly
-        without a double-login prompt.
-        Example: TRUSTED_NETWORKS=127.0.0.1/32,192.168.1.0/24,172.16.0.0/12
-
-    Layer 2 — Basic Auth (DASHBOARD_USER + DASHBOARD_PASSWORD env vars):
-        Applied to any request not arriving from a trusted network.
-        Acts as a fallback for direct LAN access or if the proxy is misconfigured.
-
-    If neither is configured the app runs open and logs a warning — fine for
-    local development, not for production.
-    """
-    username = os.getenv("DASHBOARD_USER", "")
-    password = os.getenv("DASHBOARD_PASSWORD", "")
+def _parse_trusted_networks() -> list:
     trusted_raw = os.getenv("TRUSTED_NETWORKS", "")
-
-    # Parse trusted network CIDRs
-    trusted_networks: list[ipaddress.IPv4Network | ipaddress.IPv6Network] = []
+    networks = []
     for cidr in trusted_raw.split(","):
         cidr = cidr.strip()
         if not cidr:
             continue
         try:
-            trusted_networks.append(ipaddress.ip_network(cidr, strict=False))
+            networks.append(ipaddress.ip_network(cidr, strict=False))
         except ValueError:
             logger.warning("Invalid TRUSTED_NETWORKS entry (ignored): %r", cidr)
+    if networks:
+        logger.info("Trusted networks: %s", ", ".join(str(n) for n in networks))
+    return networks
 
-    if trusted_networks:
-        logger.info(
-            "Trusted networks (proxy bypass): %s",
-            ", ".join(str(n) for n in trusted_networks),
-        )
+
+def _setup_auth(app: Flask, trusted_networks: list) -> None:
+    """
+    Two-layer auth:
+      Layer 1 — requests from TRUSTED_NETWORKS bypass Basic Auth (proxy already authed them).
+      Layer 2 — Basic Auth via DASHBOARD_USER + DASHBOARD_PASSWORD for direct LAN access.
+    Both disabled → app runs open with a warning (local dev only).
+    """
+    username = os.getenv("DASHBOARD_USER", "")
+    password = os.getenv("DASHBOARD_PASSWORD", "")
 
     has_basic_auth = bool(username and password)
 
