@@ -35,6 +35,13 @@
     /mnt/user/appdata/stock-analyzer
   </Config>
 
+  <Config Name="Backups directory" Target="/backups"
+          Default="/mnt/user/appdata/stock-analyzer/backups"
+          Description="Where nightly backups are written. Point this at your main array for parity protection. Backups are enabled automatically when this volume is mounted — leave blank to disable."
+          Type="Path" Display="always" Required="false" Mask="false">
+    /mnt/user/appdata/stock-analyzer/backups
+  </Config>
+
   <Config Name="Claude credentials" Target="/home/appuser/.claude"
           Default="/mnt/user/appdata/stock-analyzer/claude-auth"
           Description="Persistent folder for Claude login credentials. After first start, run: docker exec -it StockAnalyzer claude login — then follow the browser link."
