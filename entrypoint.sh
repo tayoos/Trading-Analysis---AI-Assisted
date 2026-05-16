@@ -1,3 +1,3 @@
 #!/bin/sh
-mkdir -p /data/db /data/reports /data/stocks /data/backups
+mkdir -p /data/db /data/reports /data/stocks
 exec python -m app
