@@ -41,6 +41,10 @@ class BackupManager:
     def destination_reachable(self) -> bool:
         if not self.backup_path:
             return False
+        # Require an actual mount point — avoids silently writing into the
+        # container's ephemeral layer when the backup volume isn't mounted.
+        if not os.path.ismount(self.backup_path):
+            return False
         try:
             os.makedirs(self.backup_path, exist_ok=True)
             return os.path.isdir(self.backup_path)
