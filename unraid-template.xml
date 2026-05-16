@@ -20,7 +20,7 @@
   <DateInstalled/>
   <DonateText/>
   <DonateLink/>
-  <Requires>Claude subscription (Pro or Max). Run 'claude login' on the Unraid host before starting the container. Trading 212 account optional. Docker login to ghcr.io required — run: docker login ghcr.io -u tayoos</Requires>
+  <Requires>Claude subscription (Pro or Max). After first start run: docker exec -it StockAnalyzer claude login</Requires>
 
   <!-- ── Ports ──────────────────────────────────────────────────────────────── -->
   <Config Name="Web UI Port" Target="8765" Default="8765" Mode="tcp"
@@ -28,47 +28,21 @@
           Type="Port" Display="always" Required="true" Mask="false">8765</Config>
 
   <!-- ── Volumes ────────────────────────────────────────────────────────────── -->
-  <Config Name="Database directory" Target="/data/db"
-          Default="/mnt/cache/appdata/stock-analyzer/db"
-          Description="Where the SQLite database is stored. Put this on your fast ZFS/cache pool for best performance."
+  <Config Name="Data directory" Target="/data"
+          Default="/mnt/user/appdata/stock-analyzer"
+          Description="All app data (database, reports, stocks input, backups) is stored here. Subdirectories are created automatically on first start."
           Type="Path" Display="always" Required="true" Mask="false">
-    /mnt/cache/appdata/stock-analyzer/db
+    /mnt/user/appdata/stock-analyzer
   </Config>
 
-  <Config Name="Reports directory" Target="/data/reports"
-          Default="/mnt/cache/appdata/stock-analyzer/reports"
-          Description="Where generated Excel/text analysis reports are saved."
-          Type="Path" Display="always" Required="true" Mask="false">
-    /mnt/cache/appdata/stock-analyzer/reports
-  </Config>
-
-  <Config Name="Stocks input directory" Target="/data/stocks"
-          Default="/mnt/cache/appdata/stock-analyzer/stocks"
-          Description="Optional: place a stocks.xlsx here to manually define holdings as a fallback when T212 sync is not used."
-          Type="Path" Display="always" Required="false" Mask="false">
-    /mnt/cache/appdata/stock-analyzer/stocks
-  </Config>
-
-  <Config Name="Backup destination" Target="/data/backups"
-          Default="/mnt/user/appdata/stock-analyzer/backups"
-          Description="Where nightly backups are written. Point this at your MAIN Unraid array (not the cache pool) for parity protection. Mounting this volume enables backups automatically — leave the host path blank or remove this entry to disable backups entirely."
-          Type="Path" Display="always" Required="false" Mask="false">
-    /mnt/user/appdata/stock-analyzer/backups
-  </Config>
-
-  <!-- ── Claude credentials ────────────────────────────────────────────────── -->
-  <!-- After starting the container for the first time, run:                  -->
-  <!--   docker exec -it stock-analyzer claude login                          -->
-  <!-- Follow the browser link. Credentials are saved here and persist across -->
-  <!-- container restarts and Watchtower updates. No host install needed.     -->
   <Config Name="Claude credentials" Target="/home/appuser/.claude"
-          Default="/mnt/cache/appdata/stock-analyzer/claude-auth"
-          Description="Persistent folder for Claude login credentials. After first start, run: docker exec -it stock-analyzer claude login — then follow the browser link. Uses your Claude subscription, no API key needed."
+          Default="/mnt/user/appdata/stock-analyzer/claude-auth"
+          Description="Persistent folder for Claude login credentials. After first start, run: docker exec -it StockAnalyzer claude login — then follow the browser link."
           Type="Path" Display="always" Required="true" Mask="false">
-    /mnt/cache/appdata/stock-analyzer/claude-auth
+    /mnt/user/appdata/stock-analyzer/claude-auth
   </Config>
 
-  <!-- ── T212 API Key ───────────────────────────────────────────────────────── -->
+  <!-- ── T212 API ───────────────────────────────────────────────────────────── -->
   <Config Name="Trading 212 API Key" Target="TRADING212_API_KEY" Default=""
           Description="T212 API Key ID. In T212: Settings → API → Create key. Read-only scope is sufficient."
           Type="Variable" Display="always" Required="false" Mask="true"/>
@@ -79,7 +53,7 @@
 
   <!-- ── Auth ───────────────────────────────────────────────────────────────── -->
   <Config Name="Dashboard Username" Target="DASHBOARD_USER" Default="admin"
-          Description="Username for Basic Auth login when accessing the dashboard directly (not via a reverse proxy)."
+          Description="Username for Basic Auth login when accessing the dashboard."
           Type="Variable" Display="always" Required="true" Mask="false">admin</Config>
 
   <Config Name="Dashboard Password" Target="DASHBOARD_PASSWORD" Default=""
@@ -88,14 +62,14 @@
 
   <Config Name="Trusted Networks (proxy bypass)" Target="TRUSTED_NETWORKS"
           Default="127.0.0.1/32,::1/128"
-          Description="Comma-separated CIDRs that bypass Basic Auth (e.g. your Authelia/nginx proxy IP or LAN subnet). Requests from these IPs are trusted without a password. Example: 192.168.1.0/24,172.17.0.0/16"
+          Description="Comma-separated CIDRs that bypass Basic Auth (e.g. your Authelia/nginx proxy IP or LAN subnet). Example: 192.168.1.0/24,172.17.0.0/16"
           Type="Variable" Display="advanced" Required="false" Mask="false">
     127.0.0.1/32,::1/128
   </Config>
 
   <!-- ── Reports ────────────────────────────────────────────────────────────── -->
   <Config Name="Report Encryption Key" Target="REPORTS_ENCRYPTION_KEY" Default=""
-          Description="Optional. If set, Excel reports are password-protected and text reports are encrypted. Use a value DIFFERENT from your dashboard password."
+          Description="Optional. If set, Excel reports are password-protected and text reports are encrypted."
           Type="Variable" Display="advanced" Required="false" Mask="true"/>
 
   <Config Name="Reports Retention Days" Target="REPORTS_RETENTION_DAYS" Default="365"
@@ -104,7 +78,7 @@
 
   <!-- ── Schedule ───────────────────────────────────────────────────────────── -->
   <Config Name="Analysis Schedule Days" Target="SCHEDULE_DAYS" Default="0,2,5"
-          Description="Comma-separated day numbers to run analysis (0=Mon, 1=Tue, 2=Wed, 3=Thu, 4=Fri, 5=Sat, 6=Sun). Default: 0,2,5 = Mon/Wed/Sat."
+          Description="Comma-separated day numbers (0=Mon … 6=Sun). Default: 0,2,5 = Mon/Wed/Sat."
           Type="Variable" Display="advanced" Required="false" Mask="false">0,2,5</Config>
 
   <Config Name="Analysis Schedule Hour (UTC)" Target="SCHEDULE_HOUR" Default="7"
@@ -112,19 +86,11 @@
           Type="Variable" Display="advanced" Required="false" Mask="false">7</Config>
 
   <!-- ── Backup ─────────────────────────────────────────────────────────────── -->
-  <!-- Backup path is fixed at /data/backups inside the container.            -->
-  <!-- Backups run automatically if the Backup destination volume is mounted. -->
-  <!-- If the volume is not mounted, backups are silently skipped.            -->
-
   <Config Name="Backup Retention Days" Target="BACKUP_RETAIN_DAYS" Default="60"
-          Description="Backups older than this many days are removed automatically."
+          Description="Backups older than this many days are removed automatically. Backups are written to /data/backups inside the container."
           Type="Variable" Display="advanced" Required="false" Mask="false">60</Config>
 
   <!-- ── Misc ───────────────────────────────────────────────────────────────── -->
-  <Config Name="Port (internal)" Target="PORT" Default="8765"
-          Description="Internal port the Flask server listens on. Only change this if you also change the Web UI Port above."
-          Type="Variable" Display="advanced" Required="false" Mask="false">8765</Config>
-
   <Config Name="Cost Method" Target="COST_METHOD" Default="AVCO"
           Description="Cost basis calculation method: AVCO (average cost, default) or FIFO."
           Type="Variable" Display="advanced" Required="false" Mask="false">AVCO</Config>

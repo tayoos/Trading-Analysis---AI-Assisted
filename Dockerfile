@@ -16,11 +16,13 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY app/ ./app/
 COPY templates/ ./templates/
+COPY entrypoint.sh /entrypoint.sh
 
 # Non-root user with a real home directory so ~/.claude resolves correctly.
 RUN groupadd -r appuser && useradd -r -g appuser -m -d /home/appuser appuser \
-    && mkdir -p /data/db /data/reports /data/stocks /home/appuser/.claude \
-    && chown -R appuser:appuser /data /app /home/appuser
+    && mkdir -p /data /home/appuser/.claude \
+    && chown -R appuser:appuser /data /app /home/appuser \
+    && chmod +x /entrypoint.sh
 
 USER appuser
 
@@ -30,4 +32,4 @@ ENV PYTHONUNBUFFERED=1 \
 
 EXPOSE 8765
 
-CMD ["python", "-m", "app"]
+ENTRYPOINT ["/entrypoint.sh"]
