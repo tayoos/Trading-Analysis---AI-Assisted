@@ -102,7 +102,8 @@ Docker → Add Container and fill in the following. Use **"Add another Path, Por
 
 | Name | Key | Value |
 |---|---|---|
-| T212 Key | `TRADING212_API_KEY` | your T212 read-only API key |
+| T212 API Key ID | `TRADING212_API_KEY` | from T212 Settings → API |
+| T212 API Secret | `TRADING212_API_SECRET` | shown once on key creation — save it |
 | Dashboard Username | `DASHBOARD_USER` | e.g. `admin` |
 | Dashboard Password | `DASHBOARD_PASSWORD` | strong password |
 | Trusted Networks | `TRUSTED_NETWORKS` | `127.0.0.1/32,::1/128` — add your proxy/LAN subnet if using Authelia |
@@ -182,7 +183,8 @@ See `.env.example` for the full annotated list. Key variables:
 
 | Variable | Default | Notes |
 |----------|---------|-------|
-| `TRADING212_API_KEY` | — | Optional; enables T212 sync |
+| `TRADING212_API_KEY` | — | T212 API Key ID (optional; enables T212 sync) |
+| `TRADING212_API_SECRET` | — | T212 API Secret Key |
 | `DASHBOARD_USER` | — | Basic Auth username |
 | `DASHBOARD_PASSWORD` | — | Basic Auth password |
 | `TRUSTED_NETWORKS` | — | CIDRs that bypass Basic Auth (proxy/Authelia) |

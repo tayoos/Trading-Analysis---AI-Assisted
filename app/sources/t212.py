@@ -15,17 +15,20 @@ _TIMEOUT = 15
 class T212DataSource(DataSource):
     """Trading 212 REST API v0 client."""
 
-    def __init__(self, api_key: Optional[str] = None):
-        self._api_key = api_key or os.getenv("TRADING212_API_KEY", "")
+    def __init__(self, api_key: Optional[str] = None, api_secret: Optional[str] = None):
+        self._api_key    = api_key    or os.getenv("TRADING212_API_KEY", "")
+        self._api_secret = api_secret or os.getenv("TRADING212_API_SECRET", "")
         self._session = requests.Session()
-        self._session.headers.update({"Authorization": self._api_key})
+        if self._api_key and self._api_secret:
+            # Basic Auth: base64(apiKey:apiSecret)
+            self._session.auth = (self._api_key, self._api_secret)
 
     @property
     def name(self) -> str:
         return "trading212"
 
     def is_available(self) -> bool:
-        return bool(self._api_key)
+        return bool(self._api_key and self._api_secret)
 
     # ── Public interface ───────────────────────────────────────────────────────
 
