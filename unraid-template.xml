@@ -42,7 +42,7 @@
     /mnt/user/appdata/stock-analyzer/backups
   </Config>
 
-  <Config Name="Claude credentials" Target="/home/appuser/.claude"
+  <Config Name="Claude credentials" Target="/root/.claude"
           Default="/mnt/user/appdata/stock-analyzer/claude-auth"
           Description="Persistent folder for Claude login credentials. After first start, run: docker exec -it StockAnalyzer claude login — then follow the browser link."
           Type="Path" Display="always" Required="true" Mask="false">
