@@ -51,7 +51,7 @@
 
   <Config Name="Backup destination" Target="/data/backups"
           Default="/mnt/user/appdata/stock-analyzer/backups"
-          Description="Where nightly backups are written. Point this at your MAIN Unraid array (not the cache pool) for parity protection. Leave empty to disable backups."
+          Description="Where nightly backups are written. Point this at your MAIN Unraid array (not the cache pool) for parity protection. Mounting this volume enables backups automatically — leave the host path blank or remove this entry to disable backups entirely."
           Type="Path" Display="always" Required="false" Mask="false">
     /mnt/user/appdata/stock-analyzer/backups
   </Config>
@@ -100,9 +100,9 @@
           Type="Variable" Display="advanced" Required="false" Mask="false">7</Config>
 
   <!-- ── Backup ─────────────────────────────────────────────────────────────── -->
-  <Config Name="Backup Path (container-internal)" Target="BACKUP_PATH" Default="/data/backups"
-          Description="Path INSIDE the container where backups are written. Should match the Backup destination volume above. Set to empty to disable."
-          Type="Variable" Display="advanced" Required="false" Mask="false">/data/backups</Config>
+  <!-- Backup path is fixed at /data/backups inside the container.            -->
+  <!-- Backups run automatically if the Backup destination volume is mounted. -->
+  <!-- If the volume is not mounted, backups are silently skipped.            -->
 
   <Config Name="Backup Retention Days" Target="BACKUP_RETAIN_DAYS" Default="60"
           Description="Backups older than this many days are removed automatically."

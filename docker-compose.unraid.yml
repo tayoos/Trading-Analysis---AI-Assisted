@@ -26,10 +26,6 @@ services:
       - DASHBOARD_USER=${DASHBOARD_USER}
       - DASHBOARD_PASSWORD=${DASHBOARD_PASSWORD}
       - TRUSTED_NETWORKS=${TRUSTED_NETWORKS:-127.0.0.1/32,::1/128}
-      # Path *inside* the container where nightly backups are written.
-      # The host path for this volume should point to your main Unraid array
-      # (parity-protected), NOT the ZFS pool — see the volumes section below.
-      - BACKUP_PATH=/data/backups
       - BACKUP_RETAIN_DAYS=${BACKUP_RETAIN_DAYS:-60}
     volumes:
       # ── Primary data on ZFS pool (fast M.2) ─────────────────────────────────

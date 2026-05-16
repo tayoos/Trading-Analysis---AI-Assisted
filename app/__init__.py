@@ -34,7 +34,7 @@ def create_app() -> Flask:
     backup = BackupManager(
         db_path=os.getenv("DB_PATH", "/data/db/stocks.db"),
         reports_dir=os.getenv("REPORTS_DIR", "/data/reports"),
-        backup_path=os.getenv("BACKUP_PATH", ""),
+        backup_path="/data/backups",
         retain_days=int(os.getenv("BACKUP_RETAIN_DAYS", "60")),
     )
 
