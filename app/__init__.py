@@ -9,6 +9,7 @@ from apscheduler.triggers.cron import CronTrigger
 from flask import Flask, Response, request
 
 from .analyzer import StockAnalyzer
+from .backup import BackupManager
 from .database import Database
 from .portfolio import PortfolioManager
 from .ratelimit import setup_rate_limiting
@@ -30,10 +31,18 @@ def create_app() -> Flask:
     portfolio = PortfolioManager(db)
     analyzer = StockAnalyzer(db)
 
+    backup = BackupManager(
+        db_path=os.getenv("DB_PATH", "/data/db/stocks.db"),
+        reports_dir=os.getenv("REPORTS_DIR", "/data/reports"),
+        backup_path=os.getenv("BACKUP_PATH", ""),
+        retain_days=int(os.getenv("BACKUP_RETAIN_DAYS", "60")),
+    )
+
     app.extensions["db"] = db
     app.extensions["t212"] = t212
     app.extensions["portfolio"] = portfolio
     app.extensions["analyzer"] = analyzer
+    app.extensions["backup"] = backup
 
     # ── Auth + rate limiting ───────────────────────────────────────────────────
     trusted_networks = _parse_trusted_networks()
@@ -47,7 +56,7 @@ def create_app() -> Flask:
     app.register_blueprint(sync_bp)
 
     # ── Scheduler ──────────────────────────────────────────────────────────────
-    _setup_scheduler(app, analyzer, portfolio, t212)
+    _setup_scheduler(app, analyzer, portfolio, t212, backup)
 
     return app
 
@@ -149,7 +158,8 @@ def _load_env() -> None:
 
 
 def _setup_scheduler(app: Flask, analyzer: StockAnalyzer,
-                     portfolio: PortfolioManager, t212: T212DataSource) -> None:
+                     portfolio: PortfolioManager, t212: T212DataSource,
+                     backup: BackupManager) -> None:
     days_raw = os.getenv("SCHEDULE_DAYS", "0,2,5")
     hour = int(os.getenv("SCHEDULE_HOUR", "7"))
     sync_offset = int(os.getenv("T212_SYNC_OFFSET_MINS", "30"))
@@ -185,6 +195,20 @@ def _setup_scheduler(app: Flask, analyzer: StockAnalyzer,
     )
     logger.info("Scheduled analysis at %02d:00 on days %s", hour, day_of_week)
 
+    # Nightly backup at 02:00 UTC (after the app has been quiet overnight)
+    if backup.is_configured():
+        scheduler.add_job(
+            func=_backup_job,
+            args=[app, backup],
+            trigger=CronTrigger(hour=2, minute=0),
+            id="backup",
+            name="Nightly backup",
+            replace_existing=True,
+        )
+        logger.info("Nightly backup scheduled at 02:00 UTC → %s", backup.backup_path)
+    else:
+        logger.info("BACKUP_PATH not set — automatic backups disabled")
+
     scheduler.start()
     app.extensions["scheduler"] = scheduler
 
@@ -216,6 +240,16 @@ def _sync_job(app: Flask, t212: T212DataSource, portfolio: PortfolioManager) -> 
                 logger.info("Saved %d new dividend payments", saved)
         except Exception:
             logger.exception("Scheduled T212 sync failed")
+
+
+def _backup_job(app: Flask, backup: BackupManager) -> None:
+    with app.app_context():
+        logger.info("Running nightly backup")
+        try:
+            result = backup.run()
+            logger.info("Backup done: %s", result)
+        except Exception:
+            logger.exception("Nightly backup failed")
 
 
 def _analysis_job(app: Flask, analyzer: StockAnalyzer, portfolio: PortfolioManager) -> None:

@@ -126,6 +126,12 @@ class Database:
                     synced_at       TEXT NOT NULL
                 );
 
+                CREATE TABLE IF NOT EXISTS settings (
+                    key        TEXT PRIMARY KEY,
+                    value      TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                );
+
                 CREATE INDEX IF NOT EXISTS idx_analyses_run ON analyses(run_id);
                 CREATE INDEX IF NOT EXISTS idx_analyses_ticker ON analyses(ticker);
                 CREATE INDEX IF NOT EXISTS idx_trades_ticker ON trades(ticker);
@@ -422,3 +428,41 @@ class Database:
                    ORDER BY total_received DESC"""
             ).fetchall()
             return [dict(r) for r in rows]
+
+    # ── Settings (key-value store) ─────────────────────────────────────────────
+
+    def get_setting(self, key: str) -> Optional[str]:
+        with self._conn() as conn:
+            row = conn.execute(
+                "SELECT value FROM settings WHERE key=?", (key,)
+            ).fetchone()
+            return row["value"] if row else None
+
+    def set_setting(self, key: str, value: str) -> None:
+        with self._conn() as conn:
+            conn.execute(
+                """INSERT INTO settings (key, value, updated_at) VALUES (?,?,?)
+                   ON CONFLICT(key) DO UPDATE SET value=excluded.value,
+                   updated_at=excluded.updated_at""",
+                (key, value, _now()),
+            )
+
+    def get_key_ages(self) -> dict:
+        """
+        Returns days since each API key was last confirmed rotated.
+        None means the key has never been marked as rotated in the UI.
+        """
+        from datetime import datetime, timezone
+        result = {}
+        for key in ("t212_key_rotated_at", "anthropic_key_rotated_at"):
+            val = self.get_setting(key)
+            if val:
+                try:
+                    rotated = datetime.fromisoformat(val)
+                    days = (datetime.now(timezone.utc) - rotated).days
+                    result[key] = days
+                except ValueError:
+                    result[key] = None
+            else:
+                result[key] = None
+        return result

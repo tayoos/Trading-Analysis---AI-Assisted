@@ -1,0 +1,70 @@
+# ── Proxmox LXC / VM deployment ───────────────────────────────────────────────
+#
+# Designed for a privileged LXC container (or a VM) running Docker on Proxmox.
+#
+# Typical storage layout:
+#   Primary data  → local NVMe/SSD dataset mounted into the LXC, e.g. /opt/stock-analyzer
+#   Backups       → NFS share from TrueNAS / PBS mount, or a secondary disk
+#
+# Setup steps:
+#   1. In the LXC config (/etc/pve/lxc/<id>.conf) add bind mounts:
+#        mp0: /mnt/pve/nvme-pool/stock-analyzer,mp=/opt/stock-analyzer
+#        mp1: /mnt/pve/backup-pool/stock-analyzer,mp=/mnt/backups/stock-analyzer
+#      (adjust paths to match your Proxmox storage pools)
+#   2. If using NFS for backups, mount it on the Proxmox host first:
+#        Datacenter → Storage → Add → NFS
+#      then reference the mount point in mp1 above.
+#   3. Copy .env.example → .env and fill in your values.
+#   4. docker login ghcr.io -u tayoos  (inside the LXC)
+#
+services:
+  stock-analyzer:
+    image: ghcr.io/tayoos/trading-analysis---ai-assisted:latest
+    container_name: stock-analyzer
+    ports:
+      - "8765:8765"
+    environment:
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - TRADING212_API_KEY=${TRADING212_API_KEY}
+      - REPORTS_ENCRYPTION_KEY=${REPORTS_ENCRYPTION_KEY}
+      - REPORTS_RETENTION_DAYS=365
+      - SCHEDULE_DAYS=0,2,5
+      - SCHEDULE_HOUR=7
+      - DASHBOARD_USER=${DASHBOARD_USER}
+      - DASHBOARD_PASSWORD=${DASHBOARD_PASSWORD}
+      - TRUSTED_NETWORKS=${TRUSTED_NETWORKS:-127.0.0.1/32,::1/128}
+      - BACKUP_PATH=/data/backups
+      - BACKUP_RETAIN_DAYS=${BACKUP_RETAIN_DAYS:-60}
+    volumes:
+      # ── Primary data on fast local storage (NVMe bind-mount into LXC) ────────
+      - ${PRIMARY_DATA_PATH:-/opt/stock-analyzer}/db:/data/db
+      - ${PRIMARY_DATA_PATH:-/opt/stock-analyzer}/reports:/data/reports
+      - ${PRIMARY_DATA_PATH:-/opt/stock-analyzer}/stocks:/data/stocks
+      # ── Backup destination (NFS share / PBS mount / secondary disk) ───────────
+      # This path should resolve to your slower but redundant storage.
+      # Examples:
+      #   NFS mount:  /mnt/nfs/backups/stock-analyzer:/data/backups
+      #   PBS backup: use the PBS agent instead — see docs/proxmox-backup.md
+      #   Secondary disk: /mnt/backups/stock-analyzer:/data/backups
+      - ${BACKUP_HOST_PATH:-/mnt/backups/stock-analyzer}:/data/backups
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+
+  watchtower:
+    image: containrrr/watchtower
+    container_name: watchtower-stock-analyzer
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      # Private GHCR: run  docker login ghcr.io -u tayoos  inside the LXC first.
+      - /root/.docker/config.json:/config.json
+    command: stock-analyzer --interval 300
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "0.1"
+          memory: 64M
