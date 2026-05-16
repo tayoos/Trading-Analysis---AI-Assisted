@@ -1,0 +1,42 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+.venv/
+venv/
+env/
+
+# Env
+.env
+.env.local
+*.env
+
+# Data
+data/
+*.db
+*.sqlite
+*.sqlite3
+
+# Reports
+reports/
+*.xlsx
+!stocks.xlsx.template
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# Docker
+.dockerignore
+
+# Logs
+*.log

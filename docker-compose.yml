@@ -1,0 +1,19 @@
+services:
+  stock-analyzer:
+    build: .
+    ports:
+      - "127.0.0.1:8765:8765"   # LAN-only in dev; remove 127.0.0.1: to open to network
+    env_file: .env
+    volumes:
+      - ./data/db:/data/db
+      - ./data/reports:/data/reports
+      - ./data/stocks:/data/stocks
+      # Hot-reload in dev — remove in prod
+      - ./app:/app/app
+      - ./templates:/app/templates
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M

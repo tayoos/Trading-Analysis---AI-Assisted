@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sync — Stock Analyzer</title>
+  <style>
+    :root{--bg:#0f1117;--surface:#1a1d2e;--surface2:#242740;--border:#2d3156;
+          --text:#e2e4f0;--muted:#7b7fa8;--buy:#2196f3;--pos:#4caf50;--neg:#ef5350;
+          --warn:#ff9800;--alert:#f44336}
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{background:var(--bg);color:var(--text);font-family:system-ui,sans-serif;font-size:14px}
+    a{color:var(--buy);text-decoration:none}a:hover{text-decoration:underline}
+    nav{background:var(--surface);border-bottom:1px solid var(--border);padding:12px 24px;
+        display:flex;align-items:center;gap:24px}
+    nav .logo{font-weight:700;font-size:16px}
+    nav a{color:var(--muted);font-size:13px}
+    .page{padding:24px;max-width:900px}
+    h1{font-size:20px;margin-bottom:16px}
+    .section{background:var(--surface);border:1px solid var(--border);border-radius:10px;
+             padding:16px;margin-bottom:16px}
+    .section h2{font-size:14px;color:var(--muted);text-transform:uppercase;
+                letter-spacing:.4px;margin-bottom:12px}
+    .status-row{display:flex;align-items:center;gap:16px;margin-bottom:16px}
+    .dot{width:8px;height:8px;border-radius:50%;background:var(--pos)}
+    .dot.off{background:var(--neg)}
+    button{cursor:pointer;border:none;border-radius:6px;padding:8px 16px;
+           font-size:13px;font-weight:600;background:var(--buy);color:#fff}
+    button:hover{opacity:.85}button:disabled{opacity:.4}
+    button.secondary{background:var(--surface2);border:1px solid var(--border)}
+    button.warn-btn{background:var(--warn)}
+    table{width:100%;border-collapse:collapse}
+    th{background:var(--surface2);padding:8px 12px;text-align:left;font-size:11px;
+       text-transform:uppercase;letter-spacing:.4px;color:var(--muted)}
+    td{padding:8px 12px;border-top:1px solid var(--border)}
+    .buy{color:var(--pos)}.sell{color:var(--neg)}
+    .empty{color:var(--muted);padding:20px 0}
+    /* Key rotation */
+    .key-card{background:var(--surface2);border-radius:8px;padding:14px 16px;
+              margin-bottom:10px;display:flex;align-items:flex-start;gap:12px}
+    .key-card:last-child{margin-bottom:0}
+    .key-badge{display:inline-flex;align-items:center;gap:6px;
+               border-radius:4px;padding:3px 8px;font-size:11px;font-weight:700}
+    .key-badge.ok{background:rgba(76,175,80,.15);color:#4caf50;border:1px solid #4caf50}
+    .key-badge.warn{background:rgba(255,152,0,.15);color:var(--warn);border:1px solid var(--warn)}
+    .key-badge.alert{background:rgba(244,67,54,.15);color:var(--alert);border:1px solid var(--alert)}
+    .key-badge.info{background:rgba(33,150,243,.15);color:var(--buy);border:1px solid var(--buy)}
+    .key-info{flex:1}
+    .key-info strong{display:block;margin-bottom:4px}
+    .key-info p{color:var(--muted);font-size:12px;line-height:1.4;margin-bottom:8px}
+    /* Backup */
+    .backup-meta{display:flex;gap:24px;flex-wrap:wrap;margin-bottom:14px}
+    .backup-meta span{color:var(--muted);font-size:12px}
+    .backup-meta strong{color:var(--text)}
+    .dest-ok{color:var(--pos)}
+    .dest-err{color:var(--neg)}
+  </style>
+</head>
+<body>
+<nav>
+  <span class="logo">📈 Stock Analyzer</span>
+  <a href="/">Dashboard</a>
+  <a href="/history">History</a>
+  <a href="/sync">Sync</a>
+</nav>
+<div class="page">
+  <h1>Trading 212 Sync</h1>
+
+  <div class="section">
+    <h2>Status</h2>
+    <div class="status-row">
+      <div class="dot {{ '' if t212_available else 'off' }}"></div>
+      <span>{{ 'Connected' if t212_available else 'No API key configured (set TRADING212_API_KEY)' }}</span>
+    </div>
+    <p style="color:var(--muted);font-size:12px;margin-bottom:12px">
+      Last sync: {{ last_sync[:19].replace('T',' ') if last_sync else 'Never' }}
+    </p>
+    <button id="sync-btn" onclick="doSync()" {{ 'disabled' if not t212_available }}>
+      Sync Now
+    </button>
+    <span id="sync-msg" style="margin-left:12px;font-size:12px;color:var(--muted)"></span>
+  </div>
+
+  <div class="section">
+    <h2>Recent trades (last 50)</h2>
+    {% if trades %}
+    <table>
+      <thead>
+        <tr><th>Date</th><th>Ticker</th><th>Action</th>
+            <th>Qty</th><th>Price</th><th>Total</th></tr>
+      </thead>
+      <tbody>
+      {% for t in trades %}
+        <tr>
+          <td>{{ (t.traded_at or '')[:10] }}</td>
+          <td>{{ t.ticker }}</td>
+          <td class="{{ 'buy' if t.action == 'BUY' else 'sell' }}">{{ t.action }}</td>
+          <td>{{ t.quantity }}</td>
+          <td>{{ '%.4f'|format(t.price) }}</td>
+          <td>{{ '%.2f'|format(t.total_value) }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="empty">No trades imported yet.</p>
+    {% endif %}
+  </div>
+
+  {% if owned_history %}
+  <div class="section">
+    <h2>Closed positions</h2>
+    <table>
+      <thead>
+        <tr><th>Ticker</th><th>First Bought</th><th>Sold</th>
+            <th>Avg Cost</th><th>Realised P&L</th></tr>
+      </thead>
+      <tbody>
+      {% for o in owned_history %}
+        <tr>
+          <td>{{ o.ticker }}</td>
+          <td>{{ (o.first_bought or '')[:10] }}</td>
+          <td>{{ (o.fully_sold_at or '')[:10] }}</td>
+          <td>{{ '%.4f'|format(o.avg_cost) if o.avg_cost else '—' }}</td>
+          <td style="color:{{ '#4caf50' if (o.realised_pl or 0) >= 0 else '#ef5350' }}">
+            {{ ('%+.2f'|format(o.realised_pl)) if o.realised_pl is not none else '—' }}
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+
+  {% if dividend_summary %}
+  <div class="section">
+    <h2>Dividends received (all time)</h2>
+    <table>
+      <thead>
+        <tr><th>Ticker</th><th>Total Received</th><th>Payments</th><th>Last Paid</th></tr>
+      </thead>
+      <tbody>
+      {% for d in dividend_summary %}
+        <tr>
+          <td>{{ d.ticker }}</td>
+          <td style="color:#4caf50">£{{ '%.2f'|format(d.total_received) }}</td>
+          <td>{{ d.payment_count }}</td>
+          <td>{{ (d.last_paid or '')[:10] }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+
+  {% if dividends %}
+  <div class="section">
+    <h2>Recent dividend payments</h2>
+    <table>
+      <thead>
+        <tr><th>Date</th><th>Ticker</th><th>Amount</th><th>Shares at payment</th></tr>
+      </thead>
+      <tbody>
+      {% for d in dividends %}
+        <tr>
+          <td>{{ (d.paid_at or '')[:10] }}</td>
+          <td>{{ d.ticker }}</td>
+          <td style="color:#4caf50">£{{ '%.4f'|format(d.amount) }}</td>
+          <td>{{ d.shares_held or '—' }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+
+  {# ── API Key Rotation ─────────────────────────────────────────────────────── #}
+  <div class="section" id="key-rotation">
+    <h2>API Key Rotation</h2>
+    <p style="color:var(--muted);font-size:12px;margin-bottom:14px">
+      Rotating API keys regularly limits exposure if a key is ever leaked.
+      After rotating a key in the provider dashboard, click "Mark as rotated" to reset the timer.
+    </p>
+
+    {% set kw_map = {} %}
+    {% for w in key_warnings %}{% set _ = kw_map.update({w.key: w}) %}{% endfor %}
+
+    {# T212 key #}
+    {% set t212_w = kw_map.get('t212') %}
+    <div class="key-card">
+      <div class="key-info">
+        <strong>Trading 212 API Key</strong>
+        {% if t212_w %}
+          <span class="key-badge {{ t212_w.level }}">
+            {% if t212_w.level == 'alert' %}⚠ OVERDUE
+            {% elif t212_w.level == 'warn' %}⚠ DUE SOON
+            {% else %}ℹ NOT RECORDED{% endif %}
+          </span>
+          <p style="margin-top:6px">{{ t212_w.message }}</p>
+        {% else %}
+          <span class="key-badge ok">✓ OK</span>
+          <p style="margin-top:6px;color:var(--muted);font-size:12px">
+            {% if key_ages and key_ages.get('t212_key_rotated_at') is not none %}
+              Last rotated {{ key_ages.get('t212_key_rotated_at') }} days ago.
+            {% else %}Rotation date recorded.{% endif %}
+          </p>
+        {% endif %}
+        <p style="color:var(--muted);font-size:11px;margin-top:4px">
+          Rotate at: T212 → Settings → API (read-only key — worst case is data exposure, not financial loss).
+        </p>
+        <button class="warn-btn" onclick="markRotated('t212', this)" style="margin-top:8px">
+          Mark as rotated
+        </button>
+        <span class="rot-msg" id="rot-t212" style="margin-left:10px;font-size:12px;color:var(--muted)"></span>
+      </div>
+    </div>
+
+    {# Anthropic key #}
+    {% set anth_w = kw_map.get('anthropic') %}
+    <div class="key-card">
+      <div class="key-info">
+        <strong>Anthropic API Key</strong>
+        {% if anth_w %}
+          <span class="key-badge {{ anth_w.level }}">
+            {% if anth_w.level == 'alert' %}⚠ OVERDUE
+            {% elif anth_w.level == 'warn' %}⚠ DUE SOON
+            {% else %}ℹ NOT RECORDED{% endif %}
+          </span>
+          <p style="margin-top:6px">{{ anth_w.message }}</p>
+        {% else %}
+          <span class="key-badge ok">✓ OK</span>
+          <p style="margin-top:6px;color:var(--muted);font-size:12px">
+            {% if key_ages and key_ages.get('anthropic_key_rotated_at') is not none %}
+              Last rotated {{ key_ages.get('anthropic_key_rotated_at') }} days ago.
+            {% else %}Rotation date recorded.{% endif %}
+          </p>
+        {% endif %}
+        <p style="color:var(--muted);font-size:11px;margin-top:4px">
+          Rotate at: console.anthropic.com → API Keys.
+          Remember to update ANTHROPIC_API_KEY in your .env and restart the container.
+        </p>
+        <button class="warn-btn" onclick="markRotated('anthropic', this)" style="margin-top:8px">
+          Mark as rotated
+        </button>
+        <span class="rot-msg" id="rot-anthropic" style="margin-left:10px;font-size:12px;color:var(--muted)"></span>
+      </div>
+    </div>
+  </div>
+
+  {# ── Backup ───────────────────────────────────────────────────────────────── #}
+  <div class="section">
+    <h2>Backups</h2>
+
+    <div class="backup-meta">
+      <span>Destination:
+        {% if backup_configured %}
+          {% if backup_reachable %}
+            <strong class="dest-ok">Reachable</strong>
+          {% else %}
+            <strong class="dest-err">Not reachable — check BACKUP_PATH mount</strong>
+          {% endif %}
+        {% else %}
+          <strong style="color:var(--muted)">Not configured (set BACKUP_PATH in .env)</strong>
+        {% endif %}
+      </span>
+      <span>Last backup:
+        <strong>{{ last_backup[:19].replace('T',' ') if last_backup else 'Never' }}</strong>
+      </span>
+      <span>Retention: <strong>{{ key_warn_days }} days warning / {{ key_alert_days }} days alert</strong></span>
+    </div>
+
+    <button id="backup-btn"
+            onclick="doBackup()"
+            {{ 'disabled' if not backup_configured or not backup_reachable }}>
+      Run backup now
+    </button>
+    <span id="backup-msg" style="margin-left:12px;font-size:12px;color:var(--muted)"></span>
+
+    {% if backup_list %}
+    <table style="margin-top:14px">
+      <thead>
+        <tr><th>Timestamp</th><th>Size</th><th>Created</th></tr>
+      </thead>
+      <tbody>
+      {% for b in backup_list %}
+        <tr>
+          <td style="font-family:monospace">{{ b.timestamp }}</td>
+          <td>{{ b.size_kb }} KB</td>
+          <td>{{ b.created_at[:19].replace('T',' ') }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% elif backup_configured %}
+    <p class="empty" style="margin-top:14px">No backups found yet.</p>
+    {% endif %}
+  </div>
+</div>
+
+<script>
+async function doSync() {
+  const btn = document.getElementById('sync-btn');
+  const msg = document.getElementById('sync-msg');
+  btn.disabled = true;
+  msg.textContent = 'Syncing…';
+  try {
+    const r = await fetch('/api/sync/t212', { method: 'POST' });
+    if (r.ok) {
+      msg.textContent = 'Sync started — reload in a few seconds.';
+      setTimeout(() => location.reload(), 5000);
+    } else {
+      const d = await r.json();
+      msg.textContent = 'Error: ' + (d.error || 'unknown');
+      btn.disabled = false;
+    }
+  } catch(e) {
+    msg.textContent = 'Request failed';
+    btn.disabled = false;
+  }
+}
+
+async function markRotated(key, btn) {
+  const msgEl = document.getElementById('rot-' + key);
+  btn.disabled = true;
+  msgEl.textContent = 'Saving…';
+  try {
+    const r = await fetch('/api/keys/mark-rotated', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({key}),
+    });
+    if (r.ok) {
+      msgEl.style.color = '#4caf50';
+      msgEl.textContent = 'Recorded — reload to update the badge.';
+      setTimeout(() => location.reload(), 1500);
+    } else {
+      const d = await r.json();
+      msgEl.style.color = '#ef5350';
+      msgEl.textContent = d.error || 'Error';
+      btn.disabled = false;
+    }
+  } catch(e) {
+    msgEl.style.color = '#ef5350';
+    msgEl.textContent = 'Request failed';
+    btn.disabled = false;
+  }
+}
+
+async function doBackup() {
+  const btn = document.getElementById('backup-btn');
+  const msg = document.getElementById('backup-msg');
+  btn.disabled = true;
+  msg.textContent = 'Starting backup…';
+  try {
+    const r = await fetch('/api/backup', { method: 'POST' });
+    if (r.ok) {
+      msg.style.color = '#4caf50';
+      msg.textContent = 'Backup started — reload in a moment to see it in the list.';
+      setTimeout(() => location.reload(), 4000);
+    } else {
+      const d = await r.json();
+      msg.style.color = '#ef5350';
+      msg.textContent = 'Error: ' + (d.error || 'unknown');
+      btn.disabled = false;
+    }
+  } catch(e) {
+    msg.style.color = '#ef5350';
+    msg.textContent = 'Request failed';
+    btn.disabled = false;
+  }
+}
+</script>
+</body>
+</html>

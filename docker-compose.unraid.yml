@@ -1,0 +1,67 @@
+# ── Unraid deployment ──────────────────────────────────────────────────────────
+#
+# Primary data (DB + reports) lives on a fast ZFS pool share so analysis runs
+# quickly.  Backups go to /mnt/user/appdata/stock-analyzer/backups which sits
+# on your main Unraid array (parity-protected spinning drives).
+#
+# Before first run:
+#   1. Create the ZFS pool share in Unraid → Shares, e.g. "appdata-fast"
+#      and note its path (default: /mnt/<pool-name>/appdata/...)
+#   2. docker login ghcr.io -u tayoos   (for private image pull)
+#   3. Copy .env.example → .env and fill in your values.
+#
+services:
+  stock-analyzer:
+    image: ghcr.io/tayoos/trading-analysis---ai-assisted:latest
+    container_name: stock-analyzer
+    ports:
+      - "8765:8765"             # Unraid: set network type to "br0" to bind to LAN IP only
+    environment:
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - TRADING212_API_KEY=${TRADING212_API_KEY}
+      - REPORTS_ENCRYPTION_KEY=${REPORTS_ENCRYPTION_KEY}
+      - REPORTS_RETENTION_DAYS=365
+      - SCHEDULE_DAYS=0,2,5
+      - SCHEDULE_HOUR=7
+      - DASHBOARD_USER=${DASHBOARD_USER}
+      - DASHBOARD_PASSWORD=${DASHBOARD_PASSWORD}
+      - TRUSTED_NETWORKS=${TRUSTED_NETWORKS:-127.0.0.1/32,::1/128}
+      # Path *inside* the container where nightly backups are written.
+      # The host path for this volume should point to your main Unraid array
+      # (parity-protected), NOT the ZFS pool — see the volumes section below.
+      - BACKUP_PATH=/data/backups
+      - BACKUP_RETAIN_DAYS=${BACKUP_RETAIN_DAYS:-60}
+    volumes:
+      # ── Primary data on ZFS pool (fast M.2) ─────────────────────────────────
+      # Change the host paths to match your ZFS pool share name.
+      # Example: if your pool is "cache" and share is "appdata":
+      #   /mnt/cache/appdata/stock-analyzer/db
+      - ${ZFS_APPDATA_PATH:-/mnt/cache/appdata/stock-analyzer}/db:/data/db
+      - ${ZFS_APPDATA_PATH:-/mnt/cache/appdata/stock-analyzer}/reports:/data/reports
+      - ${ZFS_APPDATA_PATH:-/mnt/cache/appdata/stock-analyzer}/stocks:/data/stocks
+      # ── Backup destination on main Unraid array (parity-protected) ───────────
+      # /mnt/user routes through Unraid's share layer — writes go to the array.
+      # If you have a dedicated "backups" share, use /mnt/user/backups/stock-analyzer instead.
+      - /mnt/user/appdata/stock-analyzer/backups:/data/backups
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+
+  watchtower:
+    image: containrrr/watchtower
+    container_name: watchtower-stock-analyzer
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      # Private GHCR: run  docker login ghcr.io -u tayoos  on Unraid first.
+      # That creates /root/.docker/config.json which Watchtower reads here.
+      - /root/.docker/config.json:/config.json
+    command: stock-analyzer --interval 300
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "0.1"
+          memory: 64M
