@@ -13,14 +13,14 @@ Watchtower auto-updates via GHCR.
 ## Quick start (local / dev)
 
 ```bash
-# Authenticate with your Claude subscription (one-time)
-claude login
-
 cp .env.example .env
 # Edit .env — add TRADING212_API_KEY if you want T212 sync
 
-mkdir -p data/db data/reports data/stocks
+mkdir -p data/db data/reports data/stocks data/claude-auth
 docker compose up --build
+
+# Authenticate Claude once (container must be running):
+docker exec -it stock-analyzer claude login
 ```
 
 Open **http://localhost:8765** and click **Run Analysis Now**.
@@ -31,20 +31,14 @@ Open **http://localhost:8765** and click **Run Analysis Now**.
 
 ### Option A — Docker form UI (recommended)
 
-1. **Authenticate to Claude** — open Unraid terminal (Tools → Terminal) and run:
-   ```bash
-   claude login
-   ```
-   This links the container to your Claude Pro/Max subscription. Credentials are saved at `/root/.claude` and mounted into the container read-only — no API key needed.
-
-2. **Authenticate to GHCR** — still in the terminal:
+1. **Authenticate to GHCR** — open Unraid terminal (Tools → Terminal) and run:
    ```bash
    docker login ghcr.io -u tayoos
    ```
    When prompted for a password, use a GitHub Personal Access Token with `read:packages` scope
    (GitHub → Settings → Developer settings → Personal access tokens → Tokens (classic)).
 
-3. **Load the template** — run this once in the terminal to get the pre-filled form:
+2. **Load the template** — run this once in the terminal to get the pre-filled form:
    ```bash
    mkdir -p /boot/config/plugins/dockerMan/templates-user && \
    curl -H "Authorization: token YOUR_GITHUB_PAT" \
@@ -54,8 +48,14 @@ Open **http://localhost:8765** and click **Run Analysis Now**.
    ```
    Replace `YOUR_GITHUB_PAT` with the same token used above.
 
-4. **Add the container** — Docker → Add Container → select **StockAnalyzer** from the Template dropdown.
+3. **Add the container** — Docker → Add Container → select **StockAnalyzer** from the Template dropdown.
    All fields pre-fill. Review and adjust the volume paths to match your pool name, then click Apply.
+
+4. **Authenticate Claude** — after the container starts, run this once in the Unraid terminal:
+   ```bash
+   docker exec -it stock-analyzer claude login
+   ```
+   It prints a URL — open it in your browser and log in with your Claude account. Credentials are saved to the `claude-auth` volume and survive restarts and Watchtower updates. No separate API key, no host install needed.
 
 ### Option B — Manual form entry
 
@@ -90,13 +90,13 @@ Docker → Add Container and fill in the following. Use **"Add another Path, Por
 
 **Variables**
 
-**Claude credentials path** (Type = Path)
+**Claude credentials** (Type = Path)
 
 | Name | Container path | Host path |
 |---|---|---|
-| Claude credentials | `/home/appuser/.claude` | `/root/.claude` |
+| Claude credentials | `/home/appuser/.claude` | `/mnt/cache/appdata/stock-analyzer/claude-auth` |
 
-> Run `claude login` in the Unraid terminal first — this creates `/root/.claude` with your subscription credentials.
+> After the container starts, run `docker exec -it stock-analyzer claude login` and follow the browser link. No host install needed.
 
 **Variables**
 
@@ -148,6 +148,12 @@ to start the rotation reminder clock.
    # Edit .env with your keys and adjust PRIMARY_DATA_PATH / BACKUP_HOST_PATH
    docker compose up -d
    ```
+
+4. Authenticate Claude once (container must be running):
+   ```bash
+   docker exec -it stock-analyzer claude login
+   ```
+   Follow the browser link. Credentials persist in the `claude-auth` volume.
 
 ---
 

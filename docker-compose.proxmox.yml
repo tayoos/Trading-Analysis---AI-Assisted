@@ -11,11 +11,10 @@
 #        mp0: /mnt/pve/nvme-pool/stock-analyzer,mp=/opt/stock-analyzer
 #        mp1: /mnt/pve/backup-pool/stock-analyzer,mp=/mnt/backups/stock-analyzer
 #      (adjust paths to match your Proxmox storage pools)
-#   2. If using NFS for backups, mount it on the Proxmox host first:
-#        Datacenter → Storage → Add → NFS
-#      then reference the mount point in mp1 above.
-#   3. Copy .env.example → .env and fill in your values.
-#   4. docker login ghcr.io -u tayoos  (inside the LXC)
+#   2. docker login ghcr.io -u tayoos  (inside the LXC)
+#   3. Start the container, then authenticate Claude once:
+#        docker exec -it stock-analyzer claude login
+#      Follow the browser link — credentials persist via the claude-auth volume below.
 #
 services:
   stock-analyzer:
@@ -24,7 +23,6 @@ services:
     ports:
       - "8765:8765"
     environment:
-      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - TRADING212_API_KEY=${TRADING212_API_KEY}
       - REPORTS_ENCRYPTION_KEY=${REPORTS_ENCRYPTION_KEY}
       - REPORTS_RETENTION_DAYS=365
@@ -40,16 +38,11 @@ services:
       - ${PRIMARY_DATA_PATH:-/opt/stock-analyzer}/reports:/data/reports
       - ${PRIMARY_DATA_PATH:-/opt/stock-analyzer}/stocks:/data/stocks
       # ── Backup destination (NFS share / PBS mount / secondary disk) ───────────
-      # This path should resolve to your slower but redundant storage.
-      # Examples:
-      #   NFS mount:  /mnt/nfs/backups/stock-analyzer:/data/backups
-      #   PBS backup: use the PBS agent instead — see docs/proxmox-backup.md
-      #   Secondary disk: /mnt/backups/stock-analyzer:/data/backups
       - ${BACKUP_HOST_PATH:-/mnt/backups/stock-analyzer}:/data/backups
-      # ── Claude credentials (read-only) ───────────────────────────────────────
-      # Run  claude login  inside the LXC once, then mount the credentials here.
-      # Adjust the host path if your LXC user is not root (~/.claude = /root/.claude).
-      - ${CLAUDE_CONFIG_PATH:-/root/.claude}:/home/appuser/.claude:ro
+      # ── Claude credentials (persistent, writable) ─────────────────────────────
+      # After first container start, run:  docker exec -it stock-analyzer claude login
+      # Credentials are written here and survive container restarts/updates.
+      - ${PRIMARY_DATA_PATH:-/opt/stock-analyzer}/claude-auth:/home/appuser/.claude
     restart: unless-stopped
     deploy:
       resources:
@@ -62,7 +55,6 @@ services:
     container_name: watchtower-stock-analyzer
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-      # Private GHCR: run  docker login ghcr.io -u tayoos  inside the LXC first.
       - /root/.docker/config.json:/config.json
     command: stock-analyzer --interval 300
     restart: unless-stopped

@@ -4,11 +4,12 @@
 # quickly.  Backups go to /mnt/user/appdata/stock-analyzer/backups which sits
 # on your main Unraid array (parity-protected spinning drives).
 #
-# Before first run:
-#   1. Create the ZFS pool share in Unraid → Shares, e.g. "appdata-fast"
-#      and note its path (default: /mnt/<pool-name>/appdata/...)
-#   2. docker login ghcr.io -u tayoos   (for private image pull)
-#   3. Copy .env.example → .env and fill in your values.
+# First-time setup:
+#   1. docker login ghcr.io -u tayoos   (GitHub PAT with read:packages scope)
+#   2. Create host directories — see README setup section
+#   3. Start the container, then authenticate Claude once:
+#        docker exec -it stock-analyzer claude login
+#      Follow the browser link — credentials persist via the claude-auth volume below.
 #
 services:
   stock-analyzer:
@@ -17,7 +18,6 @@ services:
     ports:
       - "8765:8765"             # Unraid: set network type to "br0" to bind to LAN IP only
     environment:
-      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - TRADING212_API_KEY=${TRADING212_API_KEY}
       - REPORTS_ENCRYPTION_KEY=${REPORTS_ENCRYPTION_KEY}
       - REPORTS_RETENTION_DAYS=365
@@ -37,10 +37,10 @@ services:
       - ${ZFS_APPDATA_PATH:-/mnt/cache/appdata/stock-analyzer}/stocks:/data/stocks
       # ── Backup destination on main Unraid array (parity-protected) ───────────
       - /mnt/user/appdata/stock-analyzer/backups:/data/backups
-      # ── Claude credentials (read-only) ───────────────────────────────────────
-      # Run  claude login  on the Unraid host once, then mount the credentials here.
-      # On Unraid the credentials are stored at /root/.claude (root is the default user).
-      - /root/.claude:/home/appuser/.claude:ro
+      # ── Claude credentials (persistent, writable) ─────────────────────────────
+      # After first container start, run:  docker exec -it stock-analyzer claude login
+      # Credentials are written here and survive container restarts/updates.
+      - /mnt/cache/appdata/stock-analyzer/claude-auth:/home/appuser/.claude
     restart: unless-stopped
     deploy:
       resources:
