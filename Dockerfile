@@ -2,23 +2,31 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
+# Install Node.js (LTS) and the Claude Code CLI
+# The CLI provides the claude binary that claude-agent-sdk calls under the hood.
+# Auth credentials are mounted from the host at /home/appuser/.claude (read-only).
+RUN apt-get update && apt-get install -y --no-install-recommends curl && \
+    curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
+    apt-get install -y --no-install-recommends nodejs && \
+    npm install -g @anthropic-ai/claude-code && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
+
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY app/ ./app/
 COPY templates/ ./templates/
 
-# Create a non-root user to run the app.
-# The /data directory is created here and ownership given to appuser so it
-# can write to volume-mounted paths when those paths are bind-mounted from the host.
-RUN groupadd -r appuser && useradd -r -g appuser appuser \
-    && mkdir -p /data/db /data/reports /data/stocks \
-    && chown -R appuser:appuser /data /app
+# Non-root user with a real home directory so ~/.claude resolves correctly.
+RUN groupadd -r appuser && useradd -r -g appuser -m -d /home/appuser appuser \
+    && mkdir -p /data/db /data/reports /data/stocks /home/appuser/.claude \
+    && chown -R appuser:appuser /data /app /home/appuser
 
 USER appuser
 
 ENV PYTHONUNBUFFERED=1 \
-    PYTHONDONTWRITEBYTECODE=1
+    PYTHONDONTWRITEBYTECODE=1 \
+    HOME=/home/appuser
 
 EXPOSE 8765
 

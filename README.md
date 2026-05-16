@@ -13,8 +13,11 @@ Watchtower auto-updates via GHCR.
 ## Quick start (local / dev)
 
 ```bash
+# Authenticate with your Claude subscription (one-time)
+claude login
+
 cp .env.example .env
-# Edit .env — add ANTHROPIC_API_KEY and optionally TRADING212_API_KEY
+# Edit .env — add TRADING212_API_KEY if you want T212 sync
 
 mkdir -p data/db data/reports data/stocks
 docker compose up --build
@@ -28,14 +31,20 @@ Open **http://localhost:8765** and click **Run Analysis Now**.
 
 ### Option A — Docker form UI (recommended)
 
-1. **Authenticate to GHCR** — open Unraid terminal (Tools → Terminal) and run:
+1. **Authenticate to Claude** — open Unraid terminal (Tools → Terminal) and run:
+   ```bash
+   claude login
+   ```
+   This links the container to your Claude Pro/Max subscription. Credentials are saved at `/root/.claude` and mounted into the container read-only — no API key needed.
+
+2. **Authenticate to GHCR** — still in the terminal:
    ```bash
    docker login ghcr.io -u tayoos
    ```
    When prompted for a password, use a GitHub Personal Access Token with `read:packages` scope
    (GitHub → Settings → Developer settings → Personal access tokens → Tokens (classic)).
 
-2. **Load the template** — run this once in the terminal to get the pre-filled form:
+3. **Load the template** — run this once in the terminal to get the pre-filled form:
    ```bash
    mkdir -p /boot/config/plugins/dockerMan/templates-user && \
    curl -H "Authorization: token YOUR_GITHUB_PAT" \
@@ -45,7 +54,7 @@ Open **http://localhost:8765** and click **Run Analysis Now**.
    ```
    Replace `YOUR_GITHUB_PAT` with the same token used above.
 
-3. **Add the container** — Docker → Add Container → select **StockAnalyzer** from the Template dropdown.
+4. **Add the container** — Docker → Add Container → select **StockAnalyzer** from the Template dropdown.
    All fields pre-fill. Review and adjust the volume paths to match your pool name, then click Apply.
 
 ### Option B — Manual form entry
@@ -81,9 +90,18 @@ Docker → Add Container and fill in the following. Use **"Add another Path, Por
 
 **Variables**
 
+**Claude credentials path** (Type = Path)
+
+| Name | Container path | Host path |
+|---|---|---|
+| Claude credentials | `/home/appuser/.claude` | `/root/.claude` |
+
+> Run `claude login` in the Unraid terminal first — this creates `/root/.claude` with your subscription credentials.
+
+**Variables**
+
 | Name | Key | Value |
 |---|---|---|
-| Anthropic Key | `ANTHROPIC_API_KEY` | your key (`sk-ant-...`) |
 | T212 Key | `TRADING212_API_KEY` | your T212 read-only API key |
 | Dashboard Username | `DASHBOARD_USER` | e.g. `admin` |
 | Dashboard Password | `DASHBOARD_PASSWORD` | strong password |
@@ -158,7 +176,6 @@ See `.env.example` for the full annotated list. Key variables:
 
 | Variable | Default | Notes |
 |----------|---------|-------|
-| `ANTHROPIC_API_KEY` | — | **Required** |
 | `TRADING212_API_KEY` | — | Optional; enables T212 sync |
 | `DASHBOARD_USER` | — | Basic Auth username |
 | `DASHBOARD_PASSWORD` | — | Basic Auth password |

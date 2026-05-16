@@ -46,6 +46,10 @@ services:
       #   PBS backup: use the PBS agent instead — see docs/proxmox-backup.md
       #   Secondary disk: /mnt/backups/stock-analyzer:/data/backups
       - ${BACKUP_HOST_PATH:-/mnt/backups/stock-analyzer}:/data/backups
+      # ── Claude credentials (read-only) ───────────────────────────────────────
+      # Run  claude login  inside the LXC once, then mount the credentials here.
+      # Adjust the host path if your LXC user is not root (~/.claude = /root/.claude).
+      - ${CLAUDE_CONFIG_PATH:-/root/.claude}:/home/appuser/.claude:ro
     restart: unless-stopped
     deploy:
       resources:
