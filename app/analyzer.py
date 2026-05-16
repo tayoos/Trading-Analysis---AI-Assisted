@@ -1,20 +1,21 @@
 """
 Claude-powered stock analysis engine with handoff-note memory system.
+Uses the Claude Agent SDK so analysis runs against the user's Claude
+subscription rather than a separate API key.
 """
+import asyncio
 import json
 import logging
 import threading
 from datetime import datetime, timezone
 from typing import Optional
 
-import anthropic
 import yfinance as yf
+from claude_agent_sdk import ClaudeAgentOptions, ResultMessage, query
 
 from .database import Database
 
 logger = logging.getLogger(__name__)
-
-_MODEL = "claude-sonnet-4-20250514"
 
 _SYSTEM_PROMPT = """You are an expert equity analyst AI assistant. Your job is to analyse individual stock positions in a user's portfolio and return a structured JSON recommendation.
 
@@ -60,9 +61,8 @@ Guidelines:
 
 
 class StockAnalyzer:
-    def __init__(self, db: Database, api_key: Optional[str] = None):
+    def __init__(self, db: Database):
         self.db = db
-        self._client = anthropic.Anthropic(api_key=api_key) if api_key else anthropic.Anthropic()
         self._lock = threading.Lock()
         self._run_id: Optional[int] = None
         self._status: str = "idle"   # idle | running | done | error
@@ -142,20 +142,7 @@ class StockAnalyzer:
         handoff_note = self.db.get_handoff_note(ticker)
         prompt = _build_prompt(holding, market_data, handoff_note)
 
-        response = self._client.messages.create(
-            model=_MODEL,
-            max_tokens=1024,
-            system=[
-                {
-                    "type": "text",
-                    "text": _SYSTEM_PROMPT,
-                    "cache_control": {"type": "ephemeral"},
-                }
-            ],
-            messages=[{"role": "user", "content": prompt}],
-        )
-
-        raw = response.content[0].text.strip()
+        raw = _call_claude_sync(_SYSTEM_PROMPT + "\n\n" + prompt)
         result = json.loads(raw)
 
         # Persist position + fundamental data alongside Claude's output
@@ -190,6 +177,29 @@ class StockAnalyzer:
             name="analyzer",
         )
         t.start()
+
+
+# ── Claude Agent SDK helpers ───────────────────────────────────────────────────
+
+async def _call_claude_async(prompt: str) -> str:
+    """Single-turn query via the Claude Agent SDK."""
+    async for message in query(
+        prompt=prompt,
+        options=ClaudeAgentOptions(max_turns=1),
+    ):
+        if isinstance(message, ResultMessage):
+            return (message.result or "").strip()
+    return ""
+
+
+def _call_claude_sync(prompt: str) -> str:
+    """Sync wrapper safe to call from any background thread."""
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+        return loop.run_until_complete(_call_claude_async(prompt))
+    finally:
+        loop.close()
 
 
 # ── Market data ────────────────────────────────────────────────────────────────

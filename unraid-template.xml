@@ -20,7 +20,7 @@
   <DateInstalled/>
   <DonateText/>
   <DonateLink/>
-  <Requires>Trading 212 account with API key enabled. Anthropic API key (Claude). Docker login to ghcr.io required — run: docker login ghcr.io -u tayoos</Requires>
+  <Requires>Claude subscription (Pro or Max). Run 'claude login' on the Unraid host before starting the container. Trading 212 account optional. Docker login to ghcr.io required — run: docker login ghcr.io -u tayoos</Requires>
 
   <!-- ── Ports ──────────────────────────────────────────────────────────────── -->
   <Config Name="Web UI Port" Target="8765" Default="8765" Mode="tcp"
@@ -56,11 +56,16 @@
     /mnt/user/appdata/stock-analyzer/backups
   </Config>
 
-  <!-- ── API Keys ───────────────────────────────────────────────────────────── -->
-  <Config Name="Anthropic API Key" Target="ANTHROPIC_API_KEY" Default=""
-          Description="Your Anthropic API key (starts with sk-ant-). Get one at console.anthropic.com"
-          Type="Variable" Display="always" Required="true" Mask="true"/>
+  <!-- ── Claude credentials ────────────────────────────────────────────────── -->
+  <!-- Run  claude login  in the Unraid terminal first, then set this path.   -->
+  <Config Name="Claude credentials" Target="/home/appuser/.claude"
+          Default="/root/.claude"
+          Description="Path to your Claude Code credentials folder on the host. Created when you run 'claude login' in the Unraid terminal. Analysis bills against your Claude subscription — no separate API key needed."
+          Type="Path" Display="always" Required="true" Mask="false">
+    /root/.claude
+  </Config>
 
+  <!-- ── T212 API Key ───────────────────────────────────────────────────────── -->
   <Config Name="Trading 212 API Key" Target="TRADING212_API_KEY" Default=""
           Description="Read-only T212 API key. In T212: Settings → API → Generate key. Read-only is sufficient and safer."
           Type="Variable" Display="always" Required="false" Mask="true"/>

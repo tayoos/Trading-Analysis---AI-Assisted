@@ -36,9 +36,11 @@ services:
       - ${ZFS_APPDATA_PATH:-/mnt/cache/appdata/stock-analyzer}/reports:/data/reports
       - ${ZFS_APPDATA_PATH:-/mnt/cache/appdata/stock-analyzer}/stocks:/data/stocks
       # ── Backup destination on main Unraid array (parity-protected) ───────────
-      # /mnt/user routes through Unraid's share layer — writes go to the array.
-      # If you have a dedicated "backups" share, use /mnt/user/backups/stock-analyzer instead.
       - /mnt/user/appdata/stock-analyzer/backups:/data/backups
+      # ── Claude credentials (read-only) ───────────────────────────────────────
+      # Run  claude login  on the Unraid host once, then mount the credentials here.
+      # On Unraid the credentials are stored at /root/.claude (root is the default user).
+      - /root/.claude:/home/appuser/.claude:ro
     restart: unless-stopped
     deploy:
       resources:
