@@ -1,9 +1,12 @@
+import functools
+import hashlib
+import hmac
 import logging
 import os
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
-from flask import Flask
+from flask import Flask, Response, request
 
 from .analyzer import StockAnalyzer
 from .database import Database
@@ -31,6 +34,9 @@ def create_app() -> Flask:
     app.extensions["portfolio"] = portfolio
     app.extensions["analyzer"] = analyzer
 
+    # ── Optional Basic Auth ────────────────────────────────────────────────────
+    _setup_auth(app)
+
     # ── Blueprints ─────────────────────────────────────────────────────────────
     app.register_blueprint(dashboard_bp)
     app.register_blueprint(analysis_bp)
@@ -43,6 +49,50 @@ def create_app() -> Flask:
     return app
 
 
+def _setup_auth(app: Flask) -> None:
+    """
+    Opt-in HTTP Basic Auth. Only active when DASHBOARD_USER and DASHBOARD_PASSWORD
+    are both set. If either is missing, the app runs without authentication
+    (fine for local dev; not recommended for production).
+    """
+    username = os.getenv("DASHBOARD_USER", "")
+    password = os.getenv("DASHBOARD_PASSWORD", "")
+
+    if not (username and password):
+        logger.warning(
+            "DASHBOARD_USER / DASHBOARD_PASSWORD not set — web UI is unprotected. "
+            "Set both env vars to enable Basic Auth."
+        )
+        return
+
+    # Pre-compute expected digest so comparison is always constant-time
+    _expected_user = username.encode()
+    _expected_pass_digest = hashlib.sha256(password.encode()).digest()
+
+    @app.before_request
+    def require_auth():
+        auth = request.authorization
+        if not auth:
+            return _auth_challenge()
+
+        user_ok = hmac.compare_digest(auth.username.encode(), _expected_user)
+        pass_digest = hashlib.sha256(auth.password.encode()).digest()
+        pass_ok = hmac.compare_digest(pass_digest, _expected_pass_digest)
+
+        if not (user_ok and pass_ok):
+            return _auth_challenge()
+
+    logger.info("Basic Auth enabled for user '%s'", username)
+
+
+def _auth_challenge() -> Response:
+    return Response(
+        "Authentication required.",
+        401,
+        {"WWW-Authenticate": 'Basic realm="Stock Analyzer"'},
+    )
+
+
 def _load_env() -> None:
     try:
         from dotenv import load_dotenv
@@ -53,18 +103,15 @@ def _load_env() -> None:
 
 def _setup_scheduler(app: Flask, analyzer: StockAnalyzer,
                      portfolio: PortfolioManager, t212: T212DataSource) -> None:
-    days_raw = os.getenv("SCHEDULE_DAYS", "1,3,5")
+    days_raw = os.getenv("SCHEDULE_DAYS", "0,2,5")
     hour = int(os.getenv("SCHEDULE_HOUR", "7"))
     sync_offset = int(os.getenv("T212_SYNC_OFFSET_MINS", "30"))
     sync_enabled = os.getenv("T212_SYNC_ENABLED", "true").lower() == "true"
 
-    # day_of_week: APScheduler uses 0=Mon … 6=Sun (same as the env var convention)
     try:
-        day_of_week = ",".join(
-            str(int(d.strip())) for d in days_raw.split(",")
-        )
+        day_of_week = ",".join(str(int(d.strip())) for d in days_raw.split(","))
     except ValueError:
-        day_of_week = "1,3,5"
+        day_of_week = "0,2,5"
 
     scheduler = BackgroundScheduler(daemon=True)
 
@@ -101,7 +148,6 @@ def _sync_job(app: Flask, t212: T212DataSource, portfolio: PortfolioManager) -> 
         try:
             db = app.extensions["db"]
 
-            # Sync trades → rebuild positions
             last = db.get_last_sync_time()
             orders = t212.get_orders(since=last)
             from .sources.base import Trade
@@ -115,7 +161,6 @@ def _sync_job(app: Flask, t212: T212DataSource, portfolio: PortfolioManager) -> 
             ]
             portfolio.apply_trades(trades)
 
-            # Sync dividends
             existing = db.get_dividends(limit=1)
             last_div = existing[0]["paid_at"] if existing else None
             new_divs = t212.get_dividends(since=last_div)
@@ -136,7 +181,6 @@ def _analysis_job(app: Flask, analyzer: StockAnalyzer, portfolio: PortfolioManag
             logger.warning("No holdings found for scheduled analysis")
 
 
-# Allow `python -m app` for local dev
 def main() -> None:
     logging.basicConfig(
         level=logging.INFO,

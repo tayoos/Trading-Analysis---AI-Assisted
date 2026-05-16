@@ -8,8 +8,14 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY app/ ./app/
 COPY templates/ ./templates/
 
-# Persistent data lives here — mount a volume in prod
-RUN mkdir -p /data/db /data/reports /data/stocks
+# Create a non-root user to run the app.
+# The /data directory is created here and ownership given to appuser so it
+# can write to volume-mounted paths when those paths are bind-mounted from the host.
+RUN groupadd -r appuser && useradd -r -g appuser appuser \
+    && mkdir -p /data/db /data/reports /data/stocks \
+    && chown -R appuser:appuser /data /app
+
+USER appuser
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1
