@@ -1,6 +1,6 @@
-import functools
 import hashlib
 import hmac
+import ipaddress
 import logging
 import os
 
@@ -34,7 +34,7 @@ def create_app() -> Flask:
     app.extensions["portfolio"] = portfolio
     app.extensions["analyzer"] = analyzer
 
-    # ── Optional Basic Auth ────────────────────────────────────────────────────
+    # ── Auth ───────────────────────────────────────────────────────────────────
     _setup_auth(app)
 
     # ── Blueprints ─────────────────────────────────────────────────────────────
@@ -51,38 +51,95 @@ def create_app() -> Flask:
 
 def _setup_auth(app: Flask) -> None:
     """
-    Opt-in HTTP Basic Auth. Only active when DASHBOARD_USER and DASHBOARD_PASSWORD
-    are both set. If either is missing, the app runs without authentication
-    (fine for local dev; not recommended for production).
+    Two-layer auth that works with or without a reverse proxy (Authelia/nginx/Caddy):
+
+    Layer 1 — Trusted networks (TRUSTED_NETWORKS env var):
+        Requests arriving from these IP ranges bypass the Basic Auth challenge.
+        Use this when Authelia or another proxy sits in front — add the proxy's
+        IP or internal subnet so authenticated requests pass through cleanly
+        without a double-login prompt.
+        Example: TRUSTED_NETWORKS=127.0.0.1/32,192.168.1.0/24,172.16.0.0/12
+
+    Layer 2 — Basic Auth (DASHBOARD_USER + DASHBOARD_PASSWORD env vars):
+        Applied to any request not arriving from a trusted network.
+        Acts as a fallback for direct LAN access or if the proxy is misconfigured.
+
+    If neither is configured the app runs open and logs a warning — fine for
+    local development, not for production.
     """
     username = os.getenv("DASHBOARD_USER", "")
     password = os.getenv("DASHBOARD_PASSWORD", "")
+    trusted_raw = os.getenv("TRUSTED_NETWORKS", "")
 
-    if not (username and password):
+    # Parse trusted network CIDRs
+    trusted_networks: list[ipaddress.IPv4Network | ipaddress.IPv6Network] = []
+    for cidr in trusted_raw.split(","):
+        cidr = cidr.strip()
+        if not cidr:
+            continue
+        try:
+            trusted_networks.append(ipaddress.ip_network(cidr, strict=False))
+        except ValueError:
+            logger.warning("Invalid TRUSTED_NETWORKS entry (ignored): %r", cidr)
+
+    if trusted_networks:
+        logger.info(
+            "Trusted networks (proxy bypass): %s",
+            ", ".join(str(n) for n in trusted_networks),
+        )
+
+    has_basic_auth = bool(username and password)
+
+    if not has_basic_auth and not trusted_networks:
         logger.warning(
-            "DASHBOARD_USER / DASHBOARD_PASSWORD not set — web UI is unprotected. "
-            "Set both env vars to enable Basic Auth."
+            "No auth configured — web UI is unprotected. "
+            "Set DASHBOARD_USER+DASHBOARD_PASSWORD or TRUSTED_NETWORKS."
         )
         return
 
-    # Pre-compute expected digest so comparison is always constant-time
-    _expected_user = username.encode()
-    _expected_pass_digest = hashlib.sha256(password.encode()).digest()
+    if has_basic_auth:
+        _expected_user        = username.encode()
+        _expected_pass_digest = hashlib.sha256(password.encode()).digest()
+    else:
+        _expected_user        = b""
+        _expected_pass_digest = b""
+
+    def _from_trusted_ip() -> bool:
+        if not trusted_networks:
+            return False
+        raw = request.remote_addr or ""
+        try:
+            addr = ipaddress.ip_address(raw)
+            return any(addr in net for net in trusted_networks)
+        except ValueError:
+            return False
+
+    def _basic_auth_ok() -> bool:
+        if not has_basic_auth:
+            return False
+        auth = request.authorization
+        if not auth:
+            return False
+        user_ok = hmac.compare_digest(auth.username.encode(), _expected_user)
+        pass_ok = hmac.compare_digest(
+            hashlib.sha256(auth.password.encode()).digest(),
+            _expected_pass_digest,
+        )
+        return user_ok and pass_ok
 
     @app.before_request
     def require_auth():
-        auth = request.authorization
-        if not auth:
+        if _from_trusted_ip():
+            return None          # proxy already authenticated the user
+        if _basic_auth_ok():
+            return None
+        if has_basic_auth:
             return _auth_challenge()
+        # Trusted networks configured but request is not from one of them
+        return Response("Forbidden — access via proxy only.", 403)
 
-        user_ok = hmac.compare_digest(auth.username.encode(), _expected_user)
-        pass_digest = hashlib.sha256(auth.password.encode()).digest()
-        pass_ok = hmac.compare_digest(pass_digest, _expected_pass_digest)
-
-        if not (user_ok and pass_ok):
-            return _auth_challenge()
-
-    logger.info("Basic Auth enabled for user '%s'", username)
+    if has_basic_auth:
+        logger.info("Basic Auth enabled for user '%s'", username)
 
 
 def _auth_challenge() -> Response:
@@ -117,7 +174,7 @@ def _setup_scheduler(app: Flask, analyzer: StockAnalyzer,
 
     if sync_enabled and t212.is_available():
         sync_minute = 60 - sync_offset if sync_offset < 60 else 0
-        sync_hour = hour - 1 if sync_offset >= 60 else hour
+        sync_hour   = hour - 1 if sync_offset >= 60 else hour
         scheduler.add_job(
             func=_sync_job,
             args=[app, t212, portfolio],

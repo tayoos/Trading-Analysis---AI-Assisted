@@ -13,6 +13,7 @@ services:
       - SCHEDULE_HOUR=7
       - DASHBOARD_USER=${DASHBOARD_USER}
       - DASHBOARD_PASSWORD=${DASHBOARD_PASSWORD}
+      - TRUSTED_NETWORKS=${TRUSTED_NETWORKS:-127.0.0.1/32,::1/128}
     volumes:
       - /mnt/user/appdata/stock-analyzer/db:/data/db
       - /mnt/user/appdata/stock-analyzer/reports:/data/reports
