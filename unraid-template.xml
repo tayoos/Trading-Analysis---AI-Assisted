@@ -57,12 +57,15 @@
   </Config>
 
   <!-- ── Claude credentials ────────────────────────────────────────────────── -->
-  <!-- Run  claude login  in the Unraid terminal first, then set this path.   -->
+  <!-- After starting the container for the first time, run:                  -->
+  <!--   docker exec -it stock-analyzer claude login                          -->
+  <!-- Follow the browser link. Credentials are saved here and persist across -->
+  <!-- container restarts and Watchtower updates. No host install needed.     -->
   <Config Name="Claude credentials" Target="/home/appuser/.claude"
-          Default="/root/.claude"
-          Description="Path to your Claude Code credentials folder on the host. Created when you run 'claude login' in the Unraid terminal. Analysis bills against your Claude subscription — no separate API key needed."
+          Default="/mnt/cache/appdata/stock-analyzer/claude-auth"
+          Description="Persistent folder for Claude login credentials. After first start, run: docker exec -it stock-analyzer claude login — then follow the browser link. Uses your Claude subscription, no API key needed."
           Type="Path" Display="always" Required="true" Mask="false">
-    /root/.claude
+    /mnt/cache/appdata/stock-analyzer/claude-auth
   </Config>
 
   <!-- ── T212 API Key ───────────────────────────────────────────────────────── -->
