@@ -3,6 +3,8 @@ from threading import Lock
 
 from flask import Blueprint, current_app, jsonify, request
 
+from ..dashboard_build import build_dashboard_view
+
 bp = Blueprint("analysis", __name__)
 
 # Simple in-memory sparkline cache: ticker → {data, expires_at}
@@ -19,9 +21,14 @@ def trigger_run():
     if analyzer.status["status"] == "running":
         return jsonify({"error": "Analysis already running"}), 409
 
+    db = current_app.extensions["db"]
+    price_cache = current_app.extensions["price_cache"]
     holdings = portfolio.get_holdings()
     if not holdings:
         return jsonify({"error": "No holdings found. Add stocks.xlsx or sync T212."}), 400
+
+    from ..capital import build_pie_holdings
+    holdings = holdings + build_pie_holdings(db, price_cache.get_prices().get("prices", {}))
 
     analyzer.run_in_background(holdings)
     return jsonify({"status": "started", "ticker_count": len(holdings)}), 202
@@ -37,52 +44,12 @@ def get_status():
 def dashboard_data():
     db          = current_app.extensions["db"]
     price_cache = current_app.extensions["price_cache"]
-
-    analyses      = db.get_latest_analyses()
-    positions     = db.get_positions()
-    handoff_notes = db.get_all_handoff_notes()
-
-    analysis_map = {a["ticker"]: a for a in analyses}
-    pos_map      = {p["ticker"]: p for p in positions}
-
-    # Live prices: cache → last analysis price → avg_cost (neutral P&L)
-    cached       = price_cache.get_prices()
-    live_prices  = cached["prices"]
-    prices_stale = cached["stale"]
-
-    total_cost  = sum(p["shares"] * p["avg_cost"] for p in positions)
-    total_value = 0.0
-    for p in positions:
-        ticker = p["ticker"]
-        price  = (live_prices.get(ticker)
-                  or (analysis_map.get(ticker) or {}).get("current_price")
-                  or p["avg_cost"])
-        total_value += price * p["shares"]
-
-    analysed = set()
-    cards = []
-    for a in analyses:
-        p = pos_map.get(a["ticker"], {})
-        if not a.get("cost_basis") and p:
-            a["cost_basis"] = p.get("avg_cost")
-            a["shares"]     = p.get("shares")
-        if a["ticker"] in live_prices:
-            a["current_price"] = live_prices[a["ticker"]]
-        analysed.add(a["ticker"])
-        cards.append({**a, "handoff_note": handoff_notes.get(a["ticker"])})
-
-    summary = {
-        "total_value":       round(total_value, 2),
-        "total_cost":        round(total_cost, 2),
-        "total_pnl":         round(total_value - total_cost, 2),
-        "total_pnl_pct":     round((total_value - total_cost) / total_cost * 100, 2) if total_cost else 0,
-        "position_count":    len(positions),
-        "prices_stale":      prices_stale,
-        "prices_fetched_at": cached["fetched_at"],
-        "dividends":         db.get_dividend_stats(),
-    }
-
-    return jsonify({"summary": summary, "cards": cards})
+    view        = build_dashboard_view(db, price_cache)
+    return jsonify({
+        "summary": view["summary"],
+        "cards":   view["cards"],
+        "pies":    view["pies"],
+    })
 
 
 @bp.get("/api/prices")

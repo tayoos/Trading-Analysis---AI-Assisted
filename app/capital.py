@@ -1,0 +1,179 @@
+"""
+Capital metrics: net deposits vs reinvested gains/dividends.
+"""
+import logging
+from typing import Optional
+
+logger = logging.getLogger(__name__)
+
+
+def net_deposits_from_transactions(transactions: list[dict]) -> float:
+    """
+    Sum of deposits minus withdrawals (and outbound transfers).
+    Matches Trading 212 'net deposit' — money you put in from outside the account.
+    """
+    total = 0.0
+    for tx in transactions:
+        tx_type = (tx.get("type") or "").upper()
+        amount = float(tx.get("amount", 0))
+        if tx_type == "DEPOSIT":
+            total += amount
+        elif tx_type in ("WITHDRAW", "TRANSFER"):
+            total -= abs(amount)
+        # FEE entries are usually negative amounts already
+        elif tx_type == "FEE":
+            total += amount
+    return round(total, 2)
+
+
+def compute_capital_metrics(
+    transactions: list[dict],
+    holdings_cost: float,
+    account_summary: Optional[dict] = None,
+) -> dict:
+    """
+    investment_amount  = net deposits (your own money in)
+    reinvested_amount  = holdings cost basis minus net deposits
+                         (dividends, realised gains, pie auto-invest, etc.)
+    """
+    net = net_deposits_from_transactions(transactions)
+    if account_summary and account_summary.get("investments_cost"):
+        cost = float(account_summary["investments_cost"])
+    else:
+        cost = float(holdings_cost)
+    reinvested = max(0.0, round(cost - net, 2))
+    return {
+        "net_deposits":    net,
+        "holdings_cost":   round(cost, 2),
+        "reinvested":      reinvested,
+    }
+
+
+def sync_capital_from_t212(t212, db, holdings_cost: float) -> dict:
+    """Fetch T212 account data and persist capital metrics."""
+    if not t212.is_available():
+        return db.get_capital_metrics()
+
+    try:
+        summary = t212.get_account_summary()
+    except Exception:
+        logger.warning("Could not fetch T212 account summary for capital metrics")
+        summary = None
+
+    try:
+        transactions = t212.get_transactions()
+    except Exception:
+        logger.warning("Could not fetch T212 transactions for capital metrics")
+        transactions = []
+
+    metrics = compute_capital_metrics(transactions, holdings_cost, summary)
+    db.save_capital_metrics(metrics)
+    logger.info(
+        "Capital metrics: net_deposits=£%.2f holdings_cost=£%.2f reinvested=£%.2f",
+        metrics["net_deposits"], metrics["holdings_cost"], metrics["reinvested"],
+    )
+    return metrics
+
+
+def pie_display_name(settings: dict, pie_id: int) -> str:
+    """Best-effort pie label from T212 settings."""
+    for key in ("name", "title", "displayName"):
+        if settings.get(key):
+            return str(settings[key])
+    icon = settings.get("icon")
+    if icon:
+        return f"{icon} Pie"
+    return f"Pie {pie_id}"
+
+
+def sync_pies_from_t212(t212, db) -> int:
+    """Fetch all pies with holdings and store in DB. Returns pie count."""
+    if not t212.is_available():
+        return 0
+
+    try:
+        pie_list = t212.get_pies()
+    except Exception:
+        logger.warning("Could not fetch T212 pies list")
+        return 0
+
+    pies_out: list[dict] = []
+    import time as _time
+
+    for summary in pie_list:
+        pie_id = int(summary["id"])
+        try:
+            detail = t212.get_pie(pie_id)
+        except Exception:
+            logger.warning("Could not fetch pie %s details", pie_id)
+            continue
+
+        settings = detail.get("settings") or {}
+        div = summary.get("dividendDetails") or {}
+        result = summary.get("result") or {}
+
+        instruments = []
+        for inst in detail.get("instruments") or []:
+            raw = inst.get("ticker", "")
+            ticker = t212._normalise_ticker(raw)
+            if not ticker:
+                continue
+            qty = float(inst.get("ownedQuantity", 0))
+            if qty <= 0:
+                continue
+            inst_result = inst.get("result") or {}
+            instruments.append({
+                "ticker":   ticker,
+                "quantity": qty,
+                "value":    float(inst_result.get("priceAvgValue", 0)) or None,
+            })
+
+        pies_out.append({
+            "id":              pie_id,
+            "name":            pie_display_name(settings, pie_id),
+            "icon":            settings.get("icon"),
+            "cash":            float(summary.get("cash", 0)),
+            "reinvested":      float(div.get("reinvested", 0)),
+            "invested_value":  float(result.get("priceAvgInvestedValue", 0)),
+            "current_value":   float(result.get("priceAvgValue", 0)),
+            "instruments":     instruments,
+        })
+        _time.sleep(5.1)  # pies detail rate limit: 1 req / 5s
+
+    db.replace_pies(pies_out)
+    logger.info("Synced %d pie(s) with holdings", len(pies_out))
+    return len(pies_out)
+
+
+def build_pie_holdings(db, live_prices: dict | None = None) -> list[dict]:
+    """Synthetic holdings for combined pie-level AI analysis."""
+    live_prices = live_prices or {}
+    pos_map = {p["ticker"]: p for p in db.get_positions()}
+    holdings = []
+    for pie in db.get_pies():
+        if not pie.get("instruments"):
+            continue
+        members = []
+        total_cost = 0.0
+        total_value = 0.0
+        for inst in pie["instruments"]:
+            t = inst["ticker"]
+            p = pos_map.get(t, {})
+            shares = float(p.get("shares") or inst.get("quantity") or 0)
+            cost = float(p.get("avg_cost") or 0)
+            price = live_prices.get(t) or cost
+            total_cost += shares * cost
+            total_value += shares * price
+            members.append({"ticker": t, "shares": shares, "avg_cost": cost})
+
+        holdings.append({
+            "ticker":       f"PIE:{pie['id']}",
+            "shares":       1,
+            "avg_cost":     pie.get("invested_value") or total_cost,
+            "current_price": pie.get("current_value") or total_value,
+            "is_pie":       True,
+            "pie_name":     pie["name"],
+            "pie_id":       pie["id"],
+            "pie_members":  members,
+        })
+    return holdings

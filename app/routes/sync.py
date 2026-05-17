@@ -4,6 +4,8 @@ from datetime import datetime, timezone
 
 from flask import Blueprint, current_app, jsonify, render_template, request
 
+from ..capital import sync_capital_from_t212, sync_pies_from_t212
+
 bp = Blueprint("sync", __name__)
 logger = logging.getLogger(__name__)
 
@@ -89,6 +91,14 @@ def sync_t212():
             # the first sync (missing buy history). T212 is the source of truth
             # for what is currently open, so we upsert live positions on top.
             _reconcile_positions(t212, db)
+
+            with _sync_lock:
+                _sync_state["message"] = "Syncing pies and capital metrics…"
+            holdings_cost = sum(
+                p["shares"] * p["avg_cost"] for p in db.get_positions()
+            )
+            sync_capital_from_t212(t212, db, holdings_cost)
+            sync_pies_from_t212(t212, db)
 
             with _sync_lock:
                 _sync_state["trades"] = len(orders)

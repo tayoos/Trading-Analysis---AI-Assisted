@@ -172,6 +172,64 @@ class T212DataSource(DataSource):
         logger.info("T212 ✓ fetched %d dividends across %d page(s)", len(results), page)
         return results
 
+    def get_account_summary(self) -> dict:
+        """Cash and investment breakdown from T212 account summary."""
+        logger.info("T212 ▶ fetching account summary")
+        data = self._get("/api/v0/equity/account/summary")
+        investments = data.get("investments") or {}
+        cash = data.get("cash") or {}
+        return {
+            "currency":           data.get("currency"),
+            "total_value":        float(data.get("totalValue", 0)),
+            "investments_cost":   float(investments.get("totalCost", 0)),
+            "investments_value":  float(investments.get("currentValue", 0)),
+            "unrealized_pnl":     float(investments.get("unrealizedProfitLoss", 0)),
+            "realized_pnl":       float(investments.get("realizedProfitLoss", 0)),
+            "cash_available":     float(cash.get("availableToTrade", 0)),
+            "cash_in_pies":       float(cash.get("inPies", 0)),
+        }
+
+    def get_transactions(self) -> list[dict]:
+        """All account cash movements (deposits, withdrawals, fees, transfers)."""
+        logger.info("T212 ▶ fetching transaction history")
+        results: list[dict] = []
+        next_path: Optional[str] = "/api/v0/equity/history/transactions?limit=50"
+        page = 0
+
+        while next_path:
+            page += 1
+            data = self._get(next_path)
+            items = data.get("items", [])
+            next_path = data.get("nextPagePath")
+            for item in items:
+                results.append({
+                    "amount":   float(item.get("amount", 0)),
+                    "currency": item.get("currency"),
+                    "type":     item.get("type", ""),
+                    "date":     item.get("dateTime", ""),
+                    "ref":      item.get("reference", ""),
+                })
+            if not items:
+                break
+            if next_path:
+                time.sleep(_HISTORY_PAGE_DELAY)
+
+        logger.info("T212 ✓ fetched %d transactions across %d page(s)", len(results), page)
+        return results
+
+    def get_pies(self) -> list[dict]:
+        """List pies (summary only — use get_pie for holdings)."""
+        logger.info("T212 ▶ fetching pies list")
+        data = self._get("/api/v0/equity/pies")
+        if not isinstance(data, list):
+            return []
+        logger.info("T212 ✓ %d pies", len(data))
+        return data
+
+    def get_pie(self, pie_id: int) -> dict:
+        logger.info("T212 ▶ fetching pie %s", pie_id)
+        return self._get(f"/api/v0/equity/pies/{pie_id}")
+
     # ── Private helpers ────────────────────────────────────────────────────────
 
     def _get(self, path: str, params: Optional[dict] = None) -> dict | list:

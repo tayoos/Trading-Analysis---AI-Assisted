@@ -438,6 +438,178 @@
 
   .empty-grid h2 { font-size: 20px; color: var(--text); margin-bottom: 8px; }
   .empty-grid p  { font-size: 13px; max-width: 440px; margin: 0 auto; line-height: 1.6; }
+
+  .s-card.clickable { cursor: pointer; }
+  .s-card.clickable:hover { border-color: rgba(0,200,150,.35); }
+
+  /* ── Modal ──────────────────────────────────────────────────────────── */
+  #dash-modal {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,.65);
+    z-index: 1000;
+    padding: 24px;
+    overflow-y: auto;
+  }
+
+  .dash-modal-box {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    max-width: 720px;
+    margin: 40px auto;
+    padding: 0;
+    box-shadow: 0 24px 64px rgba(0,0,0,.5);
+  }
+
+  .dash-modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .dash-modal-header h2 { font-size: 16px; font-weight: 700; margin: 0; }
+
+  .dash-modal-close {
+    background: none;
+    border: none;
+    color: var(--muted);
+    font-size: 18px;
+    cursor: pointer;
+    padding: 4px 8px;
+    border-radius: 4px;
+  }
+
+  .dash-modal-close:hover { background: var(--surface2); color: var(--text); }
+
+  #dash-modal-body {
+    padding: 18px 20px 22px;
+    font-size: 13px;
+    line-height: 1.6;
+    color: var(--muted);
+  }
+
+  #dash-modal-body p { margin-bottom: 10px; }
+  #dash-modal-body strong { color: var(--text); }
+
+  #dash-modal-body table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 12px;
+    font-size: 12px;
+  }
+
+  #dash-modal-body th, #dash-modal-body td {
+    padding: 8px 10px;
+    border-top: 1px solid var(--border);
+    text-align: left;
+  }
+
+  #dash-modal-body th { color: var(--muted); font-weight: 600; }
+
+  .modal-stock-link {
+    display: inline-block;
+    margin-top: 14px;
+    font-size: 12px;
+    color: var(--buy);
+  }
+
+  /* ── Pies section ───────────────────────────────────────────────────── */
+  .pies-section {
+    padding: 16px 24px 0;
+  }
+
+  .pies-heading {
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    color: var(--muted);
+    margin-bottom: 12px;
+  }
+
+  .pie-block {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-left: 3px solid #7c4dff;
+    border-radius: var(--radius);
+    margin-bottom: 14px;
+    overflow: hidden;
+  }
+
+  .pie-block > summary {
+    list-style: none;
+    cursor: pointer;
+    padding: 14px 18px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+
+  .pie-block > summary::-webkit-details-marker { display: none; }
+
+  .pie-name {
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--text);
+    flex: 1;
+  }
+
+  .pie-meta {
+    font-size: 11px;
+    color: var(--muted);
+    display: flex;
+    gap: 14px;
+    flex-wrap: wrap;
+  }
+
+  .pie-body {
+    border-top: 1px solid var(--border);
+    padding: 14px 18px 18px;
+  }
+
+  .pie-combined {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 14px;
+    margin-bottom: 14px;
+    font-size: 12px;
+  }
+
+  .pie-combined .reasoning { color: var(--text); margin-top: 8px; line-height: 1.55; }
+
+  .pie-members-label {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--muted);
+    margin-bottom: 10px;
+  }
+
+  .pie-members-grid {
+    display: grid;
+    gap: 10px;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  }
+
+  .stock-card.compact .card-header { padding: 12px 14px 4px; }
+  .stock-card.compact .spark-wrap { display: none; }
+  .stock-card.compact .holdings-strip { padding: 0 14px 10px; }
+
+  .standalone-heading {
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    color: var(--muted);
+    padding: 8px 24px 0;
+  }
 </style>
 {% endblock %}
 
@@ -466,9 +638,15 @@
     <div class="s-label">Portfolio Value</div>
     <div class="s-value" id="s-value">—</div>
   </div>
-  <div class="s-card">
-    <div class="s-label">Invested</div>
-    <div class="s-value" id="s-cost">—</div>
+  <div class="s-card clickable" onclick="openCapitalModal('investment')" title="Money you deposited minus withdrawals">
+    <div class="s-label">Investment amount</div>
+    <div class="s-value" id="s-invested">—</div>
+    <div class="s-sub">Net deposited</div>
+  </div>
+  <div class="s-card clickable" onclick="openCapitalModal('reinvested')" title="Dividends and gains reinvested into holdings">
+    <div class="s-label">Reinvested amount</div>
+    <div class="s-value" id="s-reinvested">—</div>
+    <div class="s-sub">Holdings cost <span id="s-holdings-cost">—</span></div>
   </div>
   <div class="s-card">
     <div class="s-label">Total P&amp;L</div>
@@ -489,7 +667,7 @@
 <!-- Dividend summary -->
 {% if dividend_stats and dividend_stats.all_time > 0 %}
 <div class="div-strip">
-  <div class="div-card">
+  <div class="div-card" style="cursor:pointer" onclick="openDividendModal()">
     <div class="s-label">Dividends All‑Time</div>
     <div class="s-value div">£{{ '%.2f'|format(dividend_stats.all_time) }}</div>
     <div class="s-sub">{{ dividend_stats.count }} payment{{ 's' if dividend_stats.count != 1 }}</div>
@@ -502,7 +680,7 @@
     <div class="s-label">Last 7 Days</div>
     <div class="s-value div">£{{ '%.2f'|format(dividend_stats.last_7d) }}</div>
   </div>
-  <div class="div-card" style="cursor:pointer;flex:0;min-width:100px" onclick="location.href='/history#dividends'">
+  <div class="div-card" style="cursor:pointer;flex:0;min-width:100px" onclick="openDividendModal()">
     <div class="s-label">All Payments</div>
     <div class="s-value div" style="font-size:14px">View →</div>
   </div>
@@ -515,6 +693,8 @@
   <button class="btn-secondary" onclick="location.href='/sync'">Sync T212</button>
   <span class="run-status" id="run-status-text"></span>
 </div>
+
+{% include "partials/pies_section.html" %}
 
 <!-- Card grid -->
 <div class="card-grid" id="card-grid">
@@ -536,7 +716,7 @@
   {% set rec = card.recommendation or 'HOLD' %}
   {% set hn  = handoff_notes.get(ticker) %}
 
-  <div class="stock-card rec-{{ rec }}" onclick="location.href='/ticker/{{ ticker }}'">
+  <div class="stock-card rec-{{ rec }}" data-ticker="{{ ticker }}" onclick="openStockModal('{{ ticker }}')">
 
     <div class="card-header">
       <div class="card-identity">
@@ -655,6 +835,16 @@
   {% endfor %}
 </div>
 
+<div id="dash-modal" onclick="closeDashModal(event)">
+  <div class="dash-modal-box" onclick="event.stopPropagation()">
+    <div class="dash-modal-header">
+      <h2 id="dash-modal-title">Details</h2>
+      <button type="button" class="dash-modal-close" onclick="closeDashModal()" aria-label="Close">✕</button>
+    </div>
+    <div id="dash-modal-body"></div>
+  </div>
+</div>
+
 <script>
   let polling = false;
 
@@ -665,7 +855,18 @@
       const d = await r.json();
       const s = d.summary;
       document.getElementById('s-value').textContent = '£' + fmt(s.total_value);
-      document.getElementById('s-cost').textContent  = '£' + fmt(s.total_cost);
+      if (s.net_deposits != null) {
+        document.getElementById('s-invested').textContent = '£' + fmt(s.net_deposits);
+      } else {
+        document.getElementById('s-invested').textContent = '—';
+      }
+      if (s.reinvested != null) {
+        document.getElementById('s-reinvested').textContent = '£' + fmt(s.reinvested);
+      } else {
+        document.getElementById('s-reinvested').textContent = '—';
+      }
+      const hc = document.getElementById('s-holdings-cost');
+      if (hc) hc.textContent = s.holdings_cost != null ? ('£' + fmt(s.holdings_cost)) : '—';
       const pnl = s.total_pnl, pct = s.total_pnl_pct;
       const pnlEl = document.getElementById('s-pnl');
       pnlEl.textContent = (pnl >= 0 ? '+£' : '-£') + fmt(Math.abs(pnl));
@@ -812,6 +1013,66 @@
   pollStatus();
 
   // ── Collapsible analysis sections ──────────────────────────────────────────
+  function closeDashModal(e) {
+    if (!e || e.target === document.getElementById('dash-modal'))
+      document.getElementById('dash-modal').style.display = 'none';
+  }
+
+  function openCapitalModal(kind) {
+    const title = kind === 'investment' ? 'Investment amount (net deposited)' : 'Reinvested amount';
+    let html = '';
+    if (kind === 'investment') {
+      html = '<p><strong>Investment amount</strong> is net cash you transferred into Trading 212: deposits minus withdrawals and outbound transfers.</p>';
+      html += '<p>This should match the &ldquo;net deposit&rdquo; in your T212 app (e.g. ~£931).</p>';
+      html += '<p>It is not the same as holdings cost basis, which includes reinvested dividends and gains.</p>';
+    } else {
+      html = '<p><strong>Reinvested amount</strong> = holdings cost basis minus net deposits.</p>';
+      html += '<p>It represents dividends, realised gains, and pie auto-invest put back into stocks without a new deposit from you.</p>';
+    }
+    document.getElementById('dash-modal-title').textContent = title;
+    document.getElementById('dash-modal-body').innerHTML = html;
+    document.getElementById('dash-modal').style.display = 'block';
+  }
+
+  async function openDividendModal() {
+    document.getElementById('dash-modal-title').textContent = 'Dividend payments';
+    document.getElementById('dash-modal-body').innerHTML = '<p>Loading…</p>';
+    document.getElementById('dash-modal').style.display = 'block';
+    try {
+      const r = await fetch('/api/dividends');
+      const d = await r.json();
+      let html = '';
+      if (d.summary && d.summary.length) {
+        html += '<table><thead><tr><th>Ticker</th><th>Total</th><th>Payments</th></tr></thead><tbody>';
+        for (const s of d.summary) {
+          html += `<tr><td>${s.ticker}</td><td>£${Number(s.total_received).toFixed(2)}</td><td>${s.payment_count}</td></tr>`;
+        }
+        html += '</tbody></table>';
+      } else {
+        html = '<p>No dividend data yet. Sync T212 to import payments.</p>';
+      }
+      html += '<a class="modal-stock-link" href="/history#dividends">Full dividend history →</a>';
+      document.getElementById('dash-modal-body').innerHTML = html;
+    } catch (e) {
+      document.getElementById('dash-modal-body').innerHTML = '<p>Failed to load dividends.</p>';
+    }
+  }
+
+  function openStockModal(ticker) {
+    const el = document.querySelector('#card-grid .stock-card[data-ticker="' + ticker + '"]')
+      || document.querySelector('.stock-card[data-ticker="' + ticker + '"]');
+    document.getElementById('dash-modal-title').textContent = ticker;
+    let html = '';
+    if (el) {
+      const clone = el.cloneNode(true);
+      clone.removeAttribute('onclick');
+      html = clone.outerHTML;
+    }
+    html += '<a class="modal-stock-link" href="/ticker/' + ticker + '">Open full ' + ticker + ' page →</a>';
+    document.getElementById('dash-modal-body').innerHTML = html;
+    document.getElementById('dash-modal').style.display = 'block';
+  }
+
   function toggleAnalysis(btn) {
     const detail = btn.nextElementSibling;
     const chevron = btn.querySelector('.expand-chevron');
