@@ -4,20 +4,46 @@
 
 {% block head %}
 <style>
-  /* ── History page styles ─────────────────────────────────────────── */
-  .page {
-    max-width: 1000px;
+  .page { max-width: 1040px; }
+
+  /* ── Tab bar ──────────────────────────────────────────────────────────── */
+  .tab-bar {
+    display: flex;
+    gap: 4px;
+    padding: 20px 24px 0;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 24px;
   }
 
-  .page-title {
-    font-size: 20px;
-    font-weight: 700;
+  .tab-btn {
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    border-radius: 0;
+    padding: 8px 16px 10px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--muted);
+    cursor: pointer;
+    transition: color 0.15s, border-color 0.15s;
+    margin-bottom: -1px;
+  }
+
+  .tab-btn:hover:not(:disabled) {
     color: var(--text);
-    margin-bottom: 20px;
+    opacity: 1;
   }
 
-  /* ── Run table ───────────────────────────────────────────────────── */
-  .run-table {
+  .tab-btn.active {
+    color: var(--text);
+    border-bottom-color: var(--buy);
+  }
+
+  .tab-content { display: none; }
+  .tab-content.active { display: block; }
+
+  /* ── Tables ───────────────────────────────────────────────────────────── */
+  .data-tbl {
     width: 100%;
     border-collapse: collapse;
     background: var(--surface);
@@ -26,9 +52,9 @@
     border: 1px solid var(--border);
   }
 
-  .run-table th {
+  .data-tbl th {
     background: var(--surface2);
-    padding: 10px 16px;
+    padding: 10px 14px;
     text-align: left;
     font-size: 11px;
     font-weight: 700;
@@ -37,21 +63,13 @@
     color: var(--muted);
   }
 
-  .run-table td {
-    padding: 11px 16px;
+  .data-tbl td {
+    padding: 11px 14px;
     border-top: 1px solid var(--border);
     font-size: 13px;
   }
 
-  .run-table tbody tr:hover td {
-    background: var(--surface2);
-  }
-
-  .run-table .run-id {
-    color: var(--muted);
-    font-size: 12px;
-    font-weight: 600;
-  }
+  .data-tbl tbody tr:hover td { background: var(--surface2); }
 
   .view-link {
     font-size: 12px;
@@ -59,12 +77,27 @@
     color: var(--buy);
   }
 
-  /* ── Modal ───────────────────────────────────────────────────────── */
+  .trade-buy  { color: var(--pos); font-weight: 600; }
+  .trade-sell { color: var(--neg); font-weight: 600; }
+
+  /* ── Section heading row ─────────────────────────────────────────────── */
+  .section-heading {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    color: var(--muted);
+    margin: 24px 0 10px;
+  }
+
+  .section-heading:first-child { margin-top: 0; }
+
+  /* ── Modal ───────────────────────────────────────────────────────────── */
   #modal {
     display: none;
     position: fixed;
     inset: 0;
-    background: rgba(0, 0, 0, 0.75);
+    background: rgba(0,0,0,.75);
     overflow: auto;
     padding: 40px 24px;
     z-index: 200;
@@ -74,7 +107,7 @@
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: var(--radius);
-    max-width: 920px;
+    max-width: 960px;
     margin: auto;
     padding: 24px;
   }
@@ -86,10 +119,7 @@
     margin-bottom: 20px;
   }
 
-  .modal-header h2 {
-    font-size: 16px;
-    font-weight: 700;
-  }
+  .modal-header h2 { font-size: 16px; font-weight: 700; }
 
   .modal-close {
     background: none;
@@ -98,15 +128,11 @@
     font-size: 20px;
     cursor: pointer;
     padding: 4px 8px;
-    line-height: 1;
     border-radius: 4px;
+    line-height: 1;
   }
 
-  .modal-close:hover {
-    background: var(--surface2);
-    color: var(--text);
-    opacity: 1;
-  }
+  .modal-close:hover { background: var(--surface2); color: var(--text); opacity: 1; }
 
   #modal-body table {
     width: 100%;
@@ -133,9 +159,7 @@
     font-size: 13px;
   }
 
-  #modal-body tbody tr:hover td {
-    background: var(--surface2);
-  }
+  #modal-body tbody tr:hover td { background: var(--surface2); }
 
   #modal-body pre {
     margin-top: 16px;
@@ -145,53 +169,201 @@
     border-radius: 6px;
     font-size: 11px;
     color: var(--muted);
-    max-height: 220px;
+    max-height: 260px;
     overflow: auto;
     line-height: 1.6;
+    white-space: pre-wrap;
+  }
+
+  /* ── Empty state ─────────────────────────────────────────────────────── */
+  .empty {
+    text-align: center;
+    padding: 60px 24px;
+    color: var(--muted);
+    font-size: 13px;
+  }
+
+  .empty h3 {
+    font-size: 16px;
+    color: var(--text);
+    margin-bottom: 8px;
   }
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="page">
-  <h1 class="page-title">Analysis History</h1>
-
-  {% if runs %}
-  <table class="run-table">
-    <thead>
-      <tr>
-        <th>Run</th>
-        <th>Started</th>
-        <th>Finished</th>
-        <th>Tickers</th>
-        <th>Status</th>
-        <th></th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for run in runs %}
-      <tr>
-        <td class="run-id">#{{ run.id }}</td>
-        <td>{{ run.started_at[:19].replace('T', ' ') if run.started_at else '—' }}</td>
-        <td>{{ run.finished_at[:19].replace('T', ' ') if run.finished_at else '—' }}</td>
-        <td>{{ run.ticker_count or 0 }}</td>
-        <td><span class="badge badge-{{ run.status }}">{{ run.status }}</span></td>
-        <td>
-          <a class="view-link" href="#" onclick="loadRun({{ run.id }});return false">View →</a>
-        </td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-  {% else %}
-  <div class="empty-state">
-    <h2>No runs yet</h2>
-    <p>Head to the Dashboard and click "Run Analysis Now" to generate your first analysis.</p>
-  </div>
-  {% endif %}
+<div class="tab-bar">
+  <button class="tab-btn active" onclick="switchTab('runs', this)">Analysis Runs</button>
+  <button class="tab-btn" onclick="switchTab('trades', this)">
+    Trades {% if trades %}<span style="color:var(--muted);font-weight:400">({{ trades|length }})</span>{% endif %}
+  </button>
+  <button class="tab-btn" onclick="switchTab('dividends', this)">
+    Dividends {% if dividends %}<span style="color:var(--muted);font-weight:400">({{ dividends|length }})</span>{% endif %}
+  </button>
 </div>
 
-<!-- Modal -->
+<div class="page">
+
+  <!-- ── Analysis Runs tab ─────────────────────────────────────────────── -->
+  <div id="tab-runs" class="tab-content active">
+    {% if runs %}
+    <table class="data-tbl">
+      <thead>
+        <tr>
+          <th>Run</th>
+          <th>Started</th>
+          <th>Finished</th>
+          <th>Tickers</th>
+          <th>Status</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for run in runs %}
+        <tr>
+          <td style="color:var(--muted);font-size:12px;font-weight:600">#{{ run.id }}</td>
+          <td>{{ run.started_at[:19].replace('T', ' ') if run.started_at else '—' }}</td>
+          <td>{{ run.finished_at[:19].replace('T', ' ') if run.finished_at else '—' }}</td>
+          <td>{{ run.ticker_count or 0 }}</td>
+          <td><span class="badge badge-{{ run.status }}">{{ run.status }}</span></td>
+          <td><a class="view-link" href="#" onclick="loadRun({{ run.id }});return false">View →</a></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="empty">
+      <h3>No analysis runs yet</h3>
+      <p>Head to the Dashboard and click "Run Analysis Now".</p>
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- ── Trades tab ──────────────────────────────────────────────────────── -->
+  <div id="tab-trades" class="tab-content">
+
+    {% if owned_history %}
+    <div class="section-heading">Closed Positions</div>
+    <table class="data-tbl" style="margin-bottom:24px">
+      <thead>
+        <tr>
+          <th>Ticker</th>
+          <th>First Bought</th>
+          <th>Sold</th>
+          <th>Avg Cost</th>
+          <th>Realised P&amp;L</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for o in owned_history %}
+        <tr>
+          <td><a href="/ticker/{{ o.ticker }}">{{ o.ticker }}</a></td>
+          <td>{{ (o.first_bought or '')[:10] }}</td>
+          <td>{{ (o.fully_sold_at or '')[:10] }}</td>
+          <td>{{ '%.4f'|format(o.avg_cost) if o.avg_cost else '—' }}</td>
+          <td class="{{ 'pos' if (o.realised_pl or 0) >= 0 else 'neg' }}">
+            {{ ('%+.2f'|format(o.realised_pl)) if o.realised_pl is not none else '—' }}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% endif %}
+
+    {% if trades %}
+    <div class="section-heading">All Trades (most recent first)</div>
+    <table class="data-tbl">
+      <thead>
+        <tr>
+          <th>Date</th>
+          <th>Ticker</th>
+          <th>Action</th>
+          <th>Qty</th>
+          <th>Price</th>
+          <th>Total</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for t in trades %}
+        <tr>
+          <td>{{ (t.traded_at or '')[:10] }}</td>
+          <td><a href="/ticker/{{ t.ticker }}">{{ t.ticker }}</a></td>
+          <td class="{{ 'trade-buy' if t.action == 'BUY' else 'trade-sell' }}">{{ t.action }}</td>
+          <td>{{ t.quantity }}</td>
+          <td>{{ '%.4f'|format(t.price) }}</td>
+          <td>{{ '%.2f'|format(t.total_value) }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="empty">
+      <h3>No trades imported yet</h3>
+      <p>Go to Sync and click "Sync Trading 212" to import your trade history.</p>
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- ── Dividends tab ───────────────────────────────────────────────────── -->
+  <div id="tab-dividends" class="tab-content">
+
+    {% if dividend_summary %}
+    <div class="section-heading">All-Time Summary by Ticker</div>
+    <table class="data-tbl" style="margin-bottom:24px">
+      <thead>
+        <tr>
+          <th>Ticker</th>
+          <th>Total Received</th>
+          <th>Payments</th>
+          <th>Last Paid</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for d in dividend_summary %}
+        <tr>
+          <td><a href="/ticker/{{ d.ticker }}">{{ d.ticker }}</a></td>
+          <td class="pos">£{{ '%.2f'|format(d.total_received) }}</td>
+          <td>{{ d.payment_count }}</td>
+          <td>{{ (d.last_paid or '')[:10] }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% endif %}
+
+    {% if dividends %}
+    <div class="section-heading">Individual Payments</div>
+    <table class="data-tbl">
+      <thead>
+        <tr>
+          <th>Date</th>
+          <th>Ticker</th>
+          <th>Amount</th>
+          <th>Shares held</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for d in dividends %}
+        <tr>
+          <td>{{ (d.paid_at or '')[:10] }}</td>
+          <td><a href="/ticker/{{ d.ticker }}">{{ d.ticker }}</a></td>
+          <td class="pos">£{{ '%.4f'|format(d.amount) }}</td>
+          <td>{{ d.shares_held or '—' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="empty">
+      <h3>No dividends recorded yet</h3>
+      <p>Dividends are imported automatically when you sync Trading 212.</p>
+    </div>
+    {% endif %}
+  </div>
+
+</div>
+
+<!-- Modal for run detail -->
 <div id="modal" onclick="closeModal(event)">
   <div class="modal-box" onclick="event.stopPropagation()">
     <div class="modal-header">
@@ -203,6 +375,13 @@
 </div>
 
 <script>
+function switchTab(name, btn) {
+  document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+  document.getElementById('tab-' + name).classList.add('active');
+  btn.classList.add('active');
+}
+
 async function loadRun(id) {
   const r = await fetch('/api/run/' + id);
   const d = await r.json();
@@ -215,14 +394,16 @@ async function loadRun(id) {
     + '</tr></thead><tbody>';
   for (const a of d.analyses) {
     const price = a.current_price || 0, cost = a.cost_basis || 0;
-    const pnl = cost ? ((price-cost)/cost*100).toFixed(1) : '—';
-    html += `<tr><td><a href="/ticker/${a.ticker}">${a.ticker}</a></td>`
-          + `<td><span class="badge badge-${a.recommendation||'HOLD'}">${a.recommendation||'—'}</span></td>`
-          + `<td>${a.confidence||'—'}</td>`
-          + `<td style="text-align:right">${price.toFixed(2)}</td>`
-          + `<td style="text-align:right">${a.price_target_30d?.toFixed(2)||'—'}</td>`
-          + `<td style="text-align:right;color:${parseFloat(pnl)>=0?'#4caf50':'#ef5350'}">`
-          + `${pnl !== '—' ? (parseFloat(pnl)>=0?'+':'')+pnl+'%' : '—'}</td></tr>`;
+    const pnl = cost ? ((price - cost) / cost * 100).toFixed(1) : '—';
+    const pnlColor = pnl !== '—' && parseFloat(pnl) >= 0 ? '#4caf50' : '#ef5350';
+    html += `<tr>
+      <td><a href="/ticker/${a.ticker}">${a.ticker}</a></td>
+      <td><span class="badge badge-${a.recommendation||'HOLD'}">${a.recommendation||'—'}</span></td>
+      <td>${a.confidence||'—'}</td>
+      <td style="text-align:right">${price.toFixed(2)}</td>
+      <td style="text-align:right">${a.price_target_30d?.toFixed(2)||'—'}</td>
+      <td style="text-align:right;color:${pnlColor}">${pnl !== '—' ? (parseFloat(pnl)>=0?'+':'')+pnl+'%' : '—'}</td>
+    </tr>`;
   }
   html += '</tbody></table>';
   if (d.run.log) {
@@ -236,5 +417,9 @@ function closeModal(e) {
   if (!e || e.target === document.getElementById('modal'))
     document.getElementById('modal').style.display = 'none';
 }
+
+// Restore last active tab from URL hash
+if (location.hash === '#trades') switchTab('trades', document.querySelectorAll('.tab-btn')[1]);
+if (location.hash === '#dividends') switchTab('dividends', document.querySelectorAll('.tab-btn')[2]);
 </script>
 {% endblock %}

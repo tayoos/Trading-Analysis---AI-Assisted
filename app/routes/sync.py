@@ -26,15 +26,15 @@ def sync_page():
     backup_list      = backup.list_backups()
     last_backup      = backup.last_backup_time()
 
+    key_warnings = _build_key_warnings(key_ages)
     return render_template(
         "sync.html",
         trades=trades,
         owned_history=owned,
-        dividends=dividends,
-        dividend_summary=dividend_summary,
         last_sync=last_sync,
         t212_available=t212.is_available(),
         key_ages=key_ages,
+        key_warnings=key_warnings,
         key_warn_days=_KEY_WARN_DAYS,
         key_alert_days=_KEY_ALERT_DAYS,
         backup_list=backup_list[:10],
