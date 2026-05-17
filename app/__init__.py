@@ -3,15 +3,18 @@ import hmac
 import ipaddress
 import logging
 import os
+import time
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
-from flask import Flask, Response, request
+from flask import Flask, Response, g, request
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 from .analyzer import StockAnalyzer
 from .backup import BackupManager
 from .database import Database
 from .portfolio import PortfolioManager
+from .prices import LivePriceCache
 from .ratelimit import setup_rate_limiting
 from .routes import analysis_bp, dashboard_bp, history_bp, sync_bp
 from .sources.t212 import T212DataSource
@@ -23,13 +26,21 @@ def create_app() -> Flask:
     app = Flask(__name__, template_folder="../templates")
     app.secret_key = os.getenv("SECRET_KEY", os.urandom(24).hex())
 
+    # Unwrap X-Forwarded-For / X-Forwarded-Proto from Traefik so that
+    # request.remote_addr is always the real client IP, not Traefik's IP.
+    # x_for=1 means trust one proxy hop (Traefik); increase if you have
+    # multiple proxies in front.
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
+
     _load_env()
+    _setup_access_log(app)
 
     # ── Core services ──────────────────────────────────────────────────────────
     db = Database(os.getenv("DB_PATH", "/data/db/stocks.db"))
     t212 = T212DataSource()
     portfolio = PortfolioManager(db)
     analyzer = StockAnalyzer(db)
+    price_cache = LivePriceCache()
 
     backup = BackupManager(
         db_path=os.getenv("DB_PATH", "/data/db/stocks.db"),
@@ -43,6 +54,7 @@ def create_app() -> Flask:
     app.extensions["portfolio"] = portfolio
     app.extensions["analyzer"] = analyzer
     app.extensions["backup"] = backup
+    app.extensions["price_cache"] = price_cache
 
     # ── Auth + rate limiting ───────────────────────────────────────────────────
     trusted_networks = _parse_trusted_networks()
@@ -59,6 +71,60 @@ def create_app() -> Flask:
     _setup_scheduler(app, analyzer, portfolio, t212, backup)
 
     return app
+
+
+def _setup_access_log(app: Flask) -> None:
+    """
+    Log every request with the real client IP (unwrapped from Traefik's
+    X-Forwarded-For) and, when present, the Authelia-authenticated identity
+    (Remote-User / Remote-Name / Remote-Email headers injected by Authelia
+    after successful forward-auth).
+    """
+    access_log = logging.getLogger("access")
+
+    @app.before_request
+    def _start_timer():
+        g._req_start = time.monotonic()
+
+    @app.after_request
+    def _log_request(response: Response) -> Response:
+        duration_ms = int((time.monotonic() - g.get("_req_start", time.monotonic())) * 1000)
+
+        # Real client IP — ProxyFix has already unwrapped X-Forwarded-For
+        client_ip = request.remote_addr or "unknown"
+
+        # Authelia sets these after a successful forward-auth challenge
+        authelia_user  = request.headers.get("Remote-User",  "")
+        authelia_name  = request.headers.get("Remote-Name",  "")
+        authelia_email = request.headers.get("Remote-Email", "")
+        authelia_groups = request.headers.get("Remote-Groups", "")
+
+        if authelia_user:
+            identity = f"authelia:{authelia_user}"
+            if authelia_name:
+                identity += f" ({authelia_name})"
+            if authelia_email:
+                identity += f" <{authelia_email}>"
+            if authelia_groups:
+                identity += f" groups=[{authelia_groups}]"
+        else:
+            # Could be Basic Auth, trusted-network bypass, or unauthenticated
+            auth = request.authorization
+            if auth and auth.username:
+                identity = f"basic:{auth.username}"
+            else:
+                identity = "anon"
+
+        access_log.info(
+            '%s "%s %s" %d %dms identity=%s',
+            client_ip,
+            request.method,
+            request.path,
+            response.status_code,
+            duration_ms,
+            identity,
+        )
+        return response
 
 
 def _parse_trusted_networks() -> list:

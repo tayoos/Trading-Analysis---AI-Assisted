@@ -59,6 +59,12 @@ def sync_t212():
             orders = t212.get_orders(since=since)
             portfolio.apply_trades(orders)
 
+            # Reconcile positions against T212's live positions endpoint.
+            # _rebuild_positions can zero out positions that were opened before
+            # the first sync (missing buy history). T212 is the source of truth
+            # for what is currently open, so we upsert live positions on top.
+            _reconcile_positions(t212, db)
+
             last_div = _last_dividend_sync(db)
             new_divs = t212.get_dividends(since=last_div)
             if new_divs:
@@ -152,6 +158,38 @@ def get_portfolio():
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
+
+def _reconcile_positions(t212, db) -> None:
+    """
+    Fetch live open positions from T212 and upsert them into the DB.
+
+    This acts as a reconciliation step after _rebuild_positions: if trade
+    history is incomplete (positions opened before the first sync), the AVCO
+    rebuild incorrectly closes them. T212's /positions endpoint is the
+    authoritative source for what is currently open.
+
+    Positions T212 no longer reports are left untouched — _rebuild_positions
+    already handles closed position cleanup via owned_history.
+    """
+    try:
+        live = t212.get_positions()
+    except Exception:
+        logger.warning("Could not fetch live positions for reconciliation — skipping")
+        return
+
+    if not live:
+        logger.info("T212 reconcile: no open positions reported by T212")
+        return
+
+    for pos in live:
+        db.upsert_position(
+            ticker=pos.ticker,
+            shares=pos.shares,
+            avg_cost=pos.avg_cost,
+            source="trading212",
+        )
+    logger.info("T212 reconcile: upserted %d live position(s) from T212", len(live))
+
 
 def _last_dividend_sync(db) -> str | None:
     divs = db.get_dividends(limit=1)

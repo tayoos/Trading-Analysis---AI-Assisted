@@ -122,7 +122,11 @@
     display: grid;
     gap: 12px;
     padding: 0 24px 24px;
-    grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  @media (max-width: 720px) {
+    .card-grid { grid-template-columns: 1fr; }
   }
 
   /* ── Stock card ─────────────────────────────────────────────────────── */
@@ -392,6 +396,11 @@
     <div class="s-label">Positions</div>
     <div class="s-value" id="s-count">{{ cards|length }}</div>
   </div>
+  <div class="s-card" style="flex:0;min-width:110px;cursor:pointer" onclick="refreshPrices()" title="Fetch live prices from Yahoo Finance">
+    <div class="s-label">Live Prices</div>
+    <div class="s-value" id="s-prices-btn" style="font-size:14px">↻ Refresh</div>
+    <div class="s-sub" id="s-prices-age">—</div>
+  </div>
 </div>
 
 <!-- Dividend summary -->
@@ -561,6 +570,7 @@
       pnlEl.className = 's-value ' + (pnl >= 0 ? 'pos' : 'neg');
       document.getElementById('s-pnl-pct').textContent = (pct >= 0 ? '+' : '') + pct + '%';
       document.getElementById('s-count').textContent = s.position_count;
+      updatePriceAge(s.prices_fetched_at, s.prices_stale);
     } catch(e) {}
   }
 
@@ -568,6 +578,42 @@
     if (n == null) return '—';
     return Math.abs(n) >= 1000 ? (Math.abs(n)/1000).toFixed(1)+'k' : Math.abs(n).toFixed(2);
   }
+
+  function updatePriceAge(fetchedAt, stale) {
+    const el = document.getElementById('s-prices-age');
+    const btn = document.getElementById('s-prices-btn');
+    if (!fetchedAt) { el.textContent = 'never fetched'; return; }
+    const mins = Math.round((Date.now()/1000 - fetchedAt) / 60);
+    el.textContent = mins < 1 ? 'just now' : mins + 'm ago';
+    btn.style.color = stale ? 'var(--hold-short)' : 'var(--pos)';
+  }
+
+  // ── Live price refresh ──────────────────────────────────────────────────────
+  let _refreshing = false;
+  async function refreshPrices() {
+    if (_refreshing) return;
+    _refreshing = true;
+    const btn = document.getElementById('s-prices-btn');
+    const age = document.getElementById('s-prices-age');
+    btn.textContent = '↻ Fetching…';
+    age.textContent = '';
+    try {
+      const r = await fetch('/api/prices/refresh', { method: 'POST' });
+      if (r.ok) {
+        await loadSummary();   // reload totals with fresh prices
+      } else {
+        age.textContent = 'failed';
+      }
+    } catch(e) {
+      age.textContent = 'error';
+    } finally {
+      btn.textContent = '↻ Refresh';
+      _refreshing = false;
+    }
+  }
+
+  // Auto-refresh prices every 5 minutes if the tab is visible
+  setInterval(() => { if (!document.hidden) refreshPrices(); }, 5 * 60 * 1000);
 
   // ── Status polling ──────────────────────────────────────────────────────────
   async function pollStatus() {

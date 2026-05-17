@@ -73,7 +73,8 @@ class PortfolioManager:
                 if t["action"] == "BUY":
                     if first_bought is None:
                         first_bought = t["traded_at"]
-                    total_cost += t["quantity"] * t["price"]
+                    # total_value is in account currency (netValue from T212 walletImpact)
+                    total_cost += t["total_value"]
                     shares += t["quantity"]
                 elif t["action"] == "SELL":
                     if shares > 0:
