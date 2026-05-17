@@ -36,22 +36,35 @@ def get_status():
 @bp.get("/api/dashboard")
 def dashboard_data():
     db = current_app.extensions["db"]
-    analyses  = db.get_latest_analyses()
-    positions = db.get_positions()
-    pos_map   = {p["ticker"]: p for p in positions}
-    handoff_notes = db.get_all_handoff_notes()  # single query, not N queries
+    analyses      = db.get_latest_analyses()
+    positions     = db.get_positions()
+    handoff_notes = db.get_all_handoff_notes()
 
-    cards = []
+    # Build lookup maps
+    analysis_map  = {a["ticker"]: a for a in analyses}
+    pos_map       = {p["ticker"]: p for p in positions}
+
+    # total_cost and position_count always come from the positions table so they
+    # show correct values even before an analysis has been run.
+    total_cost  = sum(p["shares"] * p["avg_cost"] for p in positions)
     total_value = 0.0
-    total_cost  = 0.0
 
+    # For total_value, use the most recent current_price from analyses; fall back
+    # to avg_cost (neutral P&L) for positions that haven't been analysed yet.
+    for p in positions:
+        ticker = p["ticker"]
+        a      = analysis_map.get(ticker, {})
+        price  = a.get("current_price") or p["avg_cost"]
+        total_value += price * p["shares"]
+
+    # Cards are still analysis-driven (they carry rec, price target, etc.)
+    cards = []
     for a in analyses:
         p = pos_map.get(a["ticker"], {})
-        cost   = a.get("cost_basis") or p.get("avg_cost") or 0
-        shares = a.get("shares")     or p.get("shares")   or 0
-        price  = a.get("current_price") or 0
-        total_value += price * shares
-        total_cost  += cost * shares
+        # Prefer analysis snapshot values; fill from live positions if missing
+        if not a.get("cost_basis") and p:
+            a["cost_basis"] = p.get("avg_cost")
+            a["shares"]     = p.get("shares")
         cards.append({**a, "handoff_note": handoff_notes.get(a["ticker"])})
 
     summary = {
@@ -59,7 +72,8 @@ def dashboard_data():
         "total_cost":     round(total_cost, 2),
         "total_pnl":      round(total_value - total_cost, 2),
         "total_pnl_pct":  round((total_value - total_cost) / total_cost * 100, 2) if total_cost else 0,
-        "position_count": len(cards),
+        # Count open positions, not just analysed ones
+        "position_count": len(positions),
         "dividends":      db.get_dividend_stats(),
     }
 

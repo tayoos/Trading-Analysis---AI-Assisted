@@ -1,7 +1,6 @@
 import logging
 import os
 import time
-import urllib.parse as up
 from typing import Optional
 
 import requests
@@ -14,6 +13,9 @@ _BASE_URL = "https://live.trading212.com"
 _TIMEOUT = 15
 # History endpoints allow 6 requests/min — pace to ~10s between pages
 _HISTORY_PAGE_DELAY = 10.0
+
+# Fill types that represent actual trades (not corporate actions)
+_TRADE_FILL_TYPES = {"TRADE", "FOP", "FOP_CORRECTION"}
 
 
 class T212DataSource(DataSource):
@@ -43,105 +45,121 @@ class T212DataSource(DataSource):
             ticker = self._normalise_ticker(item.get("ticker", ""))
             if not ticker:
                 continue
-            positions.append(Position(
-                ticker=ticker,
-                shares=float(item.get("quantity", 0)),
-                avg_cost=float(item.get("averagePricePaid", 0)),
-            ))
+            wallet = item.get("walletImpact", {})
+            qty    = float(item.get("quantity", 0))
+            # totalCost is in account currency; derive avg cost per share from it
+            # when available, else fall back to averagePricePaid (instrument currency)
+            total_cost = wallet.get("totalCost")
+            if total_cost is not None and qty:
+                avg_cost = float(total_cost) / qty
+            else:
+                avg_cost = float(item.get("averagePricePaid", 0))
+            logger.debug(
+                "T212   position %s: qty=%.4f avg_cost=%.4f currency=%s",
+                ticker, qty, avg_cost, wallet.get("currency", "?"),
+            )
+            positions.append(Position(ticker=ticker, shares=qty, avg_cost=avg_cost))
         logger.info("T212 ✓ %d positions", len(positions))
         return positions
 
     def get_orders(self, since: Optional[str] = None) -> list[Trade]:
         logger.info("T212 ▶ fetching order history%s", f" since {since}" if since else " (full history)")
-        params: dict = {"limit": 50}
         trades: list[Trade] = []
-        cursor = None
+        next_path: Optional[str] = "/api/v0/equity/history/orders?limit=50"
         page = 0
 
-        while True:
-            if cursor:
-                params["cursor"] = cursor
+        while next_path:
             page += 1
             logger.info("T212   orders page %d (%d trades collected so far)", page, len(trades))
-            data = self._get("/api/v0/equity/history/orders", params=params)
+            data = self._get(next_path)
 
-            items = data.get("items", [])
-            next_cursor = data.get("nextPagePath")
+            items     = data.get("items", [])
+            next_path = data.get("nextPagePath")  # use full path directly per API spec
 
             if page == 1 and items:
-                # Each item is {"fill": {...}, "order": {...}}
                 sample_statuses = list({i.get("order", {}).get("status") for i in items[:10]})
-                logger.info("T212   sample order statuses from page 1: %s", sample_statuses)
+                logger.info("T212   sample order statuses page 1: %s", sample_statuses)
 
             filled = sum(1 for i in items if i.get("order", {}).get("status") == "FILLED")
             logger.info("T212   page %d: %d items, %d filled, has_next=%s",
-                        page, len(items), filled, bool(next_cursor))
+                        page, len(items), filled, bool(next_path))
 
             for item in items:
                 order = item.get("order", {})
-                fill  = item.get("fill", {})
+                fill  = item.get("fill",  {})
 
                 if order.get("status") != "FILLED":
                     continue
 
-                filled_at = fill.get("filledAt") or order.get("dateModified", "")
+                filled_at = fill.get("filledAt") or order.get("createdAt", "")
                 if since and filled_at <= since:
                     logger.info("T212   reached already-synced cutoff (%s) — stopping early", since)
                     return trades
+
+                fill_type = fill.get("type", "TRADE")
+                if fill_type not in _TRADE_FILL_TYPES:
+                    logger.info(
+                        "T212   skipping non-trade fill: ticker=%s type=%s filledAt=%s",
+                        order.get("ticker", "?"), fill_type, filled_at,
+                    )
+                    continue
 
                 trade = self._parse_order(order, fill)
                 if trade:
                     trades.append(trade)
 
-            if not next_cursor or not items:
+            if not items:
                 break
-            qs = up.urlparse(next_cursor).query
-            cursor = up.parse_qs(qs).get("cursor", [None])[0]
-            logger.info("T212   pacing %.0fs before next orders page (rate limit: 6 req/min)", _HISTORY_PAGE_DELAY)
-            time.sleep(_HISTORY_PAGE_DELAY)
+            if next_path:
+                logger.info("T212   pacing %.0fs before next orders page (rate limit: 6 req/min)", _HISTORY_PAGE_DELAY)
+                time.sleep(_HISTORY_PAGE_DELAY)
 
         logger.info("T212 ✓ fetched %d trades across %d page(s)", len(trades), page)
         return trades
 
     def get_dividends(self, since: Optional[str] = None) -> list[dict]:
         logger.info("T212 ▶ fetching dividend history%s", f" since {since}" if since else " (full history)")
-        params: dict = {"limit": 50}
         results: list[dict] = []
-        cursor = None
+        next_path: Optional[str] = "/api/v0/equity/history/dividends?limit=50"
         page = 0
 
-        while True:
-            if cursor:
-                params["cursor"] = cursor
+        while next_path:
             page += 1
-            data = self._get("/api/v0/equity/history/dividends", params=params)
+            data = self._get(next_path)
 
-            items = data.get("items", [])
-            next_cursor = data.get("nextPagePath")
+            items     = data.get("items", [])
+            next_path = data.get("nextPagePath")
             logger.info("T212   dividends page %d: %d items", page, len(items))
 
             for item in items:
-                paid_at = item.get("paidOn", item.get("dateModified", ""))
+                # paidOn is always present per the API spec
+                paid_at = item.get("paidOn", "")
                 if since and paid_at <= since:
                     logger.info("T212   reached already-synced dividend cutoff — stopping early")
                     return results
                 ticker = self._normalise_ticker(item.get("ticker", ""))
                 if not ticker:
                     continue
+                # amount is in account primary currency per spec
+                amount = float(item.get("amount", 0))
+                logger.debug(
+                    "T212   dividend %s: amount=%.4f %s qty=%.4f type=%s",
+                    ticker, amount, item.get("currency", "?"),
+                    float(item.get("quantity", 0)), item.get("type", "?"),
+                )
                 results.append({
-                    "t212_ref": str(item.get("reference", item.get("id", ""))),
-                    "ticker": ticker,
-                    "amount": float(item.get("amount", item.get("grossAmount", 0))),
+                    "t212_ref":   str(item.get("reference", "")),
+                    "ticker":     ticker,
+                    "amount":     amount,
                     "shares_held": float(item.get("quantity", 0)) or None,
-                    "paid_at": paid_at,
+                    "paid_at":    paid_at,
                 })
 
-            if not next_cursor or not items:
+            if not items:
                 break
-            qs = up.urlparse(next_cursor).query
-            cursor = up.parse_qs(qs).get("cursor", [None])[0]
-            logger.info("T212   pacing %.0fs before next dividends page (rate limit: 6 req/min)", _HISTORY_PAGE_DELAY)
-            time.sleep(_HISTORY_PAGE_DELAY)
+            if next_path:
+                logger.info("T212   pacing %.0fs before next dividends page (rate limit: 6 req/min)", _HISTORY_PAGE_DELAY)
+                time.sleep(_HISTORY_PAGE_DELAY)
 
         logger.info("T212 ✓ fetched %d dividends across %d page(s)", len(results), page)
         return results
@@ -174,24 +192,36 @@ class T212DataSource(DataSource):
         raise RuntimeError(f"T212 rate limit retries exhausted after 10 attempts for {path}")
 
     def _parse_order(self, order: dict, fill: dict) -> Optional[Trade]:
-        """Parse a T212 HistoricalOrder's nested order+fill dicts into a Trade."""
         ticker = self._normalise_ticker(order.get("ticker", ""))
         if not ticker:
             return None
-        action = order.get("side", "").upper()  # "BUY" or "SELL"
+
+        action = order.get("side", "").upper()  # BUY | SELL per spec
         if action not in ("BUY", "SELL"):
-            qty = float(order.get("filledQuantity", 0))
-            action = "BUY" if qty >= 0 else "SELL"
-        qty = abs(float(order.get("filledQuantity", 0)))
-        price = float(fill.get("price", 0))
-        traded_at = fill.get("filledAt") or order.get("dateModified", "")
+            qty_raw = float(order.get("filledQuantity", 0))
+            action  = "BUY" if qty_raw >= 0 else "SELL"
+
+        qty       = abs(float(order.get("filledQuantity", 0)))
+        price     = float(fill.get("price", 0))
+        traded_at = fill.get("filledAt") or order.get("createdAt", "")
+
+        # walletImpact.netValue is in account currency — more accurate than qty*price
+        # (which is in instrument currency and ignores FX)
+        wallet      = fill.get("walletImpact", {})
+        net_value   = wallet.get("netValue")
+        total_value = abs(float(net_value)) if net_value is not None else qty * price
+
+        logger.debug(
+            "T212   trade %s %s: qty=%.4f price=%.4f total=%.4f %s",
+            action, ticker, qty, price, total_value, wallet.get("currency", "?"),
+        )
         return Trade(
             order_id=str(order.get("id", "")),
             ticker=ticker,
             action=action,
             quantity=qty,
             price=price,
-            total_value=qty * price,
+            total_value=total_value,
             traded_at=traded_at,
         )
 
