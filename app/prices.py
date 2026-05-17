@@ -99,6 +99,16 @@ class LivePriceCache:
         return (time.time() - self._fetched_at) > PRICE_TTL_SECONDS
 
 
+_LSE_SUFFIXES = (".L", ".IL")  # London Stock Exchange, Ireland listing
+
+
+def _ticker_candidates(ticker: str) -> list[str]:
+    """Return yfinance ticker variants to try in order."""
+    if "." in ticker:
+        return [ticker]  # already has a suffix
+    return [ticker, f"{ticker}.L"]
+
+
 def _fetch_prices(tickers: list[str]) -> tuple[dict[str, float], dict[str, str]]:
     """
     Batch-fetch latest prices from yfinance.
@@ -138,15 +148,22 @@ def _fetch_prices(tickers: list[str]) -> tuple[dict[str, float], dict[str, str]]
         failed = list(tickers)
 
     for ticker in failed:
-        try:
-            fast = yf.Ticker(ticker).fast_info
-            price = fast.last_price
-            if price:
-                prices[ticker] = float(price)
-            else:
-                errors[ticker] = "null last_price"
-        except Exception as exc:
-            errors[ticker] = str(exc)
+        resolved = False
+        # Try the ticker as-is, then with .L suffix (London-listed stocks)
+        for candidate in _ticker_candidates(ticker):
+            try:
+                fast = yf.Ticker(candidate).fast_info
+                price = fast.last_price
+                if price:
+                    prices[ticker] = float(price)
+                    if candidate != ticker:
+                        logger.info("Resolved %s via %s", ticker, candidate)
+                    resolved = True
+                    break
+            except Exception:
+                pass
+        if not resolved:
+            errors[ticker] = "no data from yfinance"
 
     if errors:
         logger.warning("Live price fetch failed for: %s", ", ".join(errors))

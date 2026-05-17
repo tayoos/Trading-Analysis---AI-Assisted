@@ -79,6 +79,15 @@ def create_app() -> Flask:
     except Exception:
         logger.exception("Auto-rebuild of positions failed — trigger a sync to retry")
 
+    # ── Startup price refresh ──────────────────────────────────────────────────
+    try:
+        tickers = [p["ticker"] for p in db.get_positions()]
+        if tickers:
+            price_cache.refresh_in_background(tickers)
+            logger.info("Kicked background price refresh for %d positions at startup", len(tickers))
+    except Exception:
+        logger.exception("Startup price refresh failed")
+
     return app
 
 

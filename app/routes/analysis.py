@@ -124,8 +124,13 @@ def sparkline(ticker: str):
     # Fetch outside the lock so we don't block other requests
     try:
         import yfinance as yf
-        hist = yf.Ticker(ticker).history(period="30d")
-        closes = [round(float(p), 4) for p in hist["Close"].tolist()] if not hist.empty else []
+        # Try base ticker first, then .L suffix for London-listed stocks
+        closes = []
+        for candidate in ([ticker, f"{ticker}.L"] if "." not in ticker else [ticker]):
+            hist = yf.Ticker(candidate).history(period="30d")
+            if not hist.empty:
+                closes = [round(float(p), 4) for p in hist["Close"].tolist()]
+                break
     except Exception:
         closes = []
 
