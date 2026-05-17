@@ -22,6 +22,36 @@ class T212TransactionsScopeError(Exception):
     """Raised when the API key lacks the history:transactions scope (HTTP 403)."""
 
 
+def _instrument_price_to_account(
+    price: float,
+    instrument_currency: Optional[str],
+) -> float:
+    """
+    T212 currentPrice / averagePricePaid are in instrument currency.
+    UK listings often use GBX (pence) — convert to pounds for GBP accounts.
+    """
+    cur = (instrument_currency or "").upper()
+    if cur == "GBX":
+        return price / 100.0
+    return price
+
+
+def _account_price_per_share(
+    quantity: float,
+    wallet: dict,
+    raw_instrument_price: Optional[float],
+    instrument_currency: Optional[str],
+) -> Optional[float]:
+    """Per-share price in account currency (wallet currentValue / qty preferred)."""
+    if quantity > 0 and wallet.get("currentValue") is not None:
+        return float(wallet["currentValue"]) / quantity
+    if raw_instrument_price is not None:
+        return _instrument_price_to_account(
+            float(raw_instrument_price), instrument_currency
+        )
+    return None
+
+
 class T212DataSource(DataSource):
     """Trading 212 REST API v0 client — HTTP Basic Auth (api_key:api_secret)."""
 
@@ -61,18 +91,39 @@ class T212DataSource(DataSource):
             qty    = float(item.get("quantity", 0))
             # totalCost is in account currency; derive avg cost per share from it
             # when available, else fall back to averagePricePaid (instrument currency)
+            instrument = item.get("instrument") or {}
+            inst_currency = instrument.get("currency")
             total_cost = wallet.get("totalCost")
             if total_cost is not None and qty:
                 avg_cost = float(total_cost) / qty
             else:
-                avg_cost = float(item.get("averagePricePaid", 0))
-            instrument = item.get("instrument") or {}
-            raw_price = item.get("currentPrice")
-            current_price = float(raw_price) if raw_price is not None else None
+                raw_avg = float(item.get("averagePricePaid", 0))
+                avg_cost = _instrument_price_to_account(raw_avg, inst_currency)
+            current_price = _account_price_per_share(
+                qty,
+                wallet,
+                item.get("currentPrice"),
+                inst_currency,
+            )
+            position_value = (
+                float(wallet["currentValue"])
+                if wallet.get("currentValue") is not None
+                else None
+            )
+            unrealized = (
+                float(wallet["unrealizedProfitLoss"])
+                if wallet.get("unrealizedProfitLoss") is not None
+                else None
+            )
             inst_name = instrument.get("name") or None
             logger.debug(
-                "T212   position %s: qty=%.4f avg_cost=%.4f currency=%s",
-                ticker, qty, avg_cost, wallet.get("currency", "?"),
+                "T212   position %s: qty=%.4f avg_cost=%.4f price=%s value=%s inst_ccy=%s",
+                ticker,
+                qty,
+                avg_cost,
+                current_price,
+                position_value,
+                inst_currency or "?",
             )
             positions.append(Position(
                 ticker=ticker,
@@ -80,6 +131,8 @@ class T212DataSource(DataSource):
                 avg_cost=avg_cost,
                 current_price=current_price,
                 instrument_name=inst_name,
+                position_value=position_value,
+                unrealized_pnl=unrealized,
             ))
         logger.info("T212 ✓ %d positions", len(positions))
         return positions

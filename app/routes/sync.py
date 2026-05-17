@@ -282,6 +282,8 @@ def _reconcile_positions(t212, db) -> None:
             source="trading212",
             current_price=pos.current_price,
             instrument_name=pos.instrument_name,
+            position_value=pos.position_value,
+            unrealized_pnl=pos.unrealized_pnl,
         )
     removed = db.prune_positions_not_in(live_tickers, source="trading212")
     if removed:
