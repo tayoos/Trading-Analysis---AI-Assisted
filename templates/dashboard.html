@@ -443,12 +443,13 @@
   {% endif %}
 
   {% for card in cards %}
-  {% set ticker = card.ticker %}
-  {% set price  = card.current_price or 0 %}
-  {% set cost   = card.cost_basis or 0 %}
-  {% set shares = card.shares or 0 %}
-  {% set pnl_pct = ((price - cost) / cost * 100) if cost else 0 %}
-  {% set pnl_abs = (price - cost) * shares %}
+  {% set ticker    = card.ticker %}
+  {% set price     = card.current_price if card.current_price else 0 %}
+  {% set has_price = price > 0 %}
+  {% set cost      = card.cost_basis or 0 %}
+  {% set shares    = card.shares or 0 %}
+  {% set pnl_pct   = ((price - cost) / cost * 100) if (has_price and cost) else 0 %}
+  {% set pnl_abs   = (price - cost) * shares if has_price else 0 %}
   {% set rec = card.recommendation or 'HOLD' %}
   {% set hn  = handoff_notes.get(ticker) %}
 
@@ -466,18 +467,23 @@
 
     <div class="metrics">
       <div class="mc">
+        <span class="mc-lbl">Qty</span>
+        <span class="mc-val">{{ '%g'|format(shares) if shares else '—' }}</span>
+      </div>
+      <div class="vdiv"></div>
+      <div class="mc">
         <span class="mc-lbl">Price</span>
-        <span class="mc-val">{{ '%.2f'|format(price) }}</span>
+        <span class="mc-val">{{ '%.2f'|format(price) if has_price else '—' }}</span>
       </div>
       <div class="vdiv"></div>
       <div class="mc">
         <span class="mc-lbl">P&amp;L %</span>
-        <span class="mc-val big {{ 'pos' if pnl_pct >= 0 else 'neg' }}">{{ '%+.1f'|format(pnl_pct) }}%</span>
+        <span class="mc-val big {{ 'pos' if pnl_pct >= 0 else 'neg' }}">{{ '%+.1f'|format(pnl_pct) + '%' if (has_price and cost) else '—' }}</span>
       </div>
       <div class="vdiv"></div>
       <div class="mc">
-        <span class="mc-lbl">P&amp;L</span>
-        <span class="mc-val {{ 'pos' if pnl_abs >= 0 else 'neg' }}">{{ '%+.0f'|format(pnl_abs) }}</span>
+        <span class="mc-lbl">Value</span>
+        <span class="mc-val">{{ '%.0f'|format(price * shares) if has_price else '—' }}</span>
       </div>
       {% if card.price_target_30d %}
       <div class="vdiv"></div>

@@ -220,7 +220,7 @@
     {% endif %}
 
     <div class="card-meta">
-      Last sync: <strong>{{ last_sync[:19].replace('T', ' ') if last_sync else 'Never' }}</strong>
+      Last sync: <strong>{{ last_sync[:19].replace('T', ' ') + ' UTC' if last_sync else 'Never' }}</strong>
     </div>
 
     <div class="action-row">
