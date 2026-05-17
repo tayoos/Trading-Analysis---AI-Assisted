@@ -27,13 +27,22 @@ def index():
     for p in positions:
         if p["ticker"] not in analysed:
             cards.append({
-                "ticker":        p["ticker"],
-                "shares":        p.get("shares"),
-                "cost_basis":    p.get("avg_cost"),
-                "recommendation": None,
-                "current_price": None,
-                "confidence":    None,
-                "reasoning":     "No analysis run yet — click Run Analysis to analyse this position.",
+                "ticker":             p["ticker"],
+                "shares":             p.get("shares"),
+                "cost_basis":         p.get("avg_cost"),
+                "recommendation":     None,
+                "current_price":      None,
+                "confidence":         None,
+                "reasoning":          "No analysis run yet — click Run Analysis to analyse this position.",
+                "eps_growth_pct":     None,
+                "pe_ratio":           None,
+                "analyst_target_mean": None,
+                "next_earnings":      None,
+                "news_sentiment":     None,
+                "price_target_30d":   None,
+                "outlook_90d":        None,
+                "catalysts":          None,
+                "risks":              None,
             })
 
     key_warnings  = _build_key_warnings(db.get_key_ages())
