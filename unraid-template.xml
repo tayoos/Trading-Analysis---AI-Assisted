@@ -98,6 +98,10 @@
           Type="Variable" Display="advanced" Required="false" Mask="false">60</Config>
 
   <!-- ── Misc ───────────────────────────────────────────────────────────────── -->
+  <Config Name="Timezone" Target="TZ" Default="Europe/London"
+          Description="How sync/backup times are shown on the Sync page. Stored timestamps stay UTC; display uses this zone (e.g. Europe/London shows GMT in winter, BST in summer)."
+          Type="Variable" Display="always" Required="false" Mask="false">Europe/London</Config>
+
   <Config Name="Cost Method" Target="COST_METHOD" Default="AVCO"
           Description="Cost basis calculation method: AVCO (average cost, default) or FIFO."
           Type="Variable" Display="advanced" Required="false" Mask="false">AVCO</Config>
