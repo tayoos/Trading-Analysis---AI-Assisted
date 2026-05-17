@@ -39,6 +39,7 @@ def sync_page():
         last_backup=last_backup,
         backup_configured=backup.is_configured(),
         backup_reachable=backup.destination_reachable(),
+        backup_retain_days=backup.retain_days,
     )
 
 

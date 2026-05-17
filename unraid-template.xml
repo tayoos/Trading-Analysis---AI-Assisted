@@ -51,11 +51,7 @@
 
   <!-- ── T212 API ───────────────────────────────────────────────────────────── -->
   <Config Name="Trading 212 API Key" Target="TRADING212_API_KEY" Default=""
-          Description="T212 API Key ID. In T212: Settings → API → Create key. Read-only scope is sufficient."
-          Type="Variable" Display="always" Required="false" Mask="true"/>
-
-  <Config Name="Trading 212 API Secret" Target="TRADING212_API_SECRET" Default=""
-          Description="T212 API Secret Key. Shown once when you generate the key — save it somewhere safe."
+          Description="T212 API Key. In T212: Settings → API → Create key. Read-only scope is sufficient."
           Type="Variable" Display="always" Required="false" Mask="true"/>
 
   <!-- ── Auth ───────────────────────────────────────────────────────────────── -->
