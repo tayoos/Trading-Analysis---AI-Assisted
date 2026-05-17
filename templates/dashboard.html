@@ -814,8 +814,9 @@
 
   {% for card in cards %}
   {% set ticker    = card.ticker %}
-  {% set price     = card.current_price if card.current_price else 0 %}
-  {% set has_price = price > 0 %}
+  {% set display_name = card.company_name or company_names.get(ticker) or ticker %}
+  {% set price     = card.current_price if card.current_price else none %}
+  {% set has_price = price is not none and price > 0 %}
   {% set cost      = card.cost_basis or 0 %}
   {% set shares    = card.shares or 0 %}
   {% set pnl_pct   = ((price - cost) / cost * 100) if (has_price and cost) else 0 %}
@@ -827,8 +828,8 @@
 
     <div class="card-header">
       <div class="card-identity">
-        <div class="card-name" id="cname-{{ ticker }}">{{ ticker }}</div>
-        <div class="card-sub">{{ ticker }}{% if card.confidence %} · <span class="conf-badge conf-{{ card.confidence }}">{{ card.confidence }} confidence</span>{% endif %}</div>
+        <div class="card-name" id="cname-{{ ticker }}">{{ display_name }}</div>
+        <div class="card-sub">{{ ticker }}{% if card.confidence %} · <span class="conf-badge conf-{{ card.confidence }}">{{ card.confidence }} confidence</span>{% endif %}{% if not has_price and card.price_error %} · <span style="color:var(--hold-short)">no live price</span>{% endif %}</div>
       </div>
       <span class="badge badge-{{ rec }}">{{ rec | replace('_', ' ') }}</span>
     </div>
@@ -838,7 +839,7 @@
     </div>
 
     <div class="price-row">
-      <span class="price-val">{{ '%.2f'|format(price) if has_price else '—' }}</span>
+      <span class="price-val">{% if has_price %}£{{ '{:,.2f}'.format(price) }}{% else %}—{% endif %}</span>
       <span class="pnl-pill {{ 'pos' if (has_price and cost and pnl_pct >= 0) else ('neg' if (has_price and cost and pnl_pct < 0) else 'neu') }}">
         {{ '%+.1f'|format(pnl_pct) + '%' if (has_price and cost) else '—' }}
       </span>
@@ -851,16 +852,16 @@
       </div>
       <div class="h-stat">
         <span class="h-lbl">Avg Cost</span>
-        <span class="h-val">{{ '%.2f'|format(cost) if cost else '—' }}</span>
+        <span class="h-val">{% if cost %}£{{ '{:,.2f}'.format(cost) }}{% else %}—{% endif %}</span>
       </div>
       <div class="h-stat">
         <span class="h-lbl">P&amp;L</span>
-        <span class="h-val {{ 'pos' if pnl_abs >= 0 else 'neg' }}">{{ '%+.2f'|format(pnl_abs) if (has_price and cost) else '—' }}</span>
+        <span class="h-val {{ 'pos' if pnl_abs >= 0 else 'neg' }}">{% if has_price and cost %}{{ '+£' if pnl_abs >= 0 else '-£' }}{{ '{:,.2f}'.format(pnl_abs|abs) }}{% else %}—{% endif %}</span>
       </div>
       <div class="h-stat">
         <span class="h-lbl">Value</span>
-        {% set val = price * shares %}
-        <span class="h-val">{{ ('%.0f' if val >= 10 else '%.2f')|format(val) if has_price else '—' }}</span>
+        {% set val = price * shares if has_price else 0 %}
+        <span class="h-val">{% if has_price %}£{{ '{:,.0f}'.format(val) if val >= 10 else '{:,.2f}'.format(val) }}{% else %}—{% endif %}</span>
       </div>
     </div>
 

@@ -226,14 +226,51 @@ def sync_capital_from_t212(t212, db, holdings_cost: float) -> dict:
     return metrics
 
 
+# T212 API returns preset icon *labels* (e.g. "Coins"), not always emoji — map for display
+_T212_PIE_ICON_LABELS: dict[str, str] = {
+    "coins": "🪙",
+    "coin": "🪙",
+    "money": "💰",
+    "cash": "💵",
+    "chart": "📈",
+    "growth": "📈",
+    "rocket": "🚀",
+    "star": "⭐",
+    "fire": "🔥",
+    "heart": "❤️",
+    "leaf": "🌿",
+    "globe": "🌍",
+    "flag": "🏁",
+    "car": "🚗",
+    "home": "🏠",
+    "tech": "💻",
+    "health": "⚕️",
+    "energy": "⚡",
+}
+
+
+def format_pie_icon(icon: Optional[str]) -> str:
+    """Turn T212 pie icon field into something sensible for the UI."""
+    if not icon:
+        return "🥧"
+    s = str(icon).strip()
+    if not s:
+        return "🥧"
+    mapped = _T212_PIE_ICON_LABELS.get(s.lower())
+    if mapped:
+        return mapped
+    # Real emoji / short symbol from T212
+    if not s.isascii() or len(s) <= 2:
+        return s
+    # Unknown English label — use generic pie, not the word "Coins"
+    return "🥧"
+
+
 def pie_display_name(settings: dict, pie_id: int) -> str:
-    """Best-effort pie label from T212 settings (often stored in icon)."""
+    """Pie label from T212 settings.name (not the icon field)."""
     for key in ("name", "title", "displayName"):
         if settings.get(key):
             return str(settings[key])
-    icon = settings.get("icon")
-    if icon and len(str(icon).strip()) > 2:
-        return str(icon).strip()
     return f"Pie {pie_id}"
 
 
@@ -282,7 +319,7 @@ def sync_pies_from_t212(t212, db) -> int:
         pies_out.append({
             "id":              pie_id,
             "name":            pie_display_name(settings, pie_id),
-            "icon":            settings.get("icon"),
+            "icon":            format_pie_icon(settings.get("icon")),
             "cash":            float(summary.get("cash", 0)),
             "reinvested":      float(div.get("reinvested", 0)),
             "invested_value":  float(result.get("priceAvgInvestedValue", 0)),
