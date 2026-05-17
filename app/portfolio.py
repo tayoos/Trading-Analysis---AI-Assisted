@@ -104,10 +104,11 @@ class PortfolioManager:
         total_bought = sum(t["quantity"] * t["price"] for t in buys)
         total_sold = sum(t["quantity"] * t["price"] for t in sells)
         peak_shares = sum(t["quantity"] for t in buys) - sum(t["quantity"] for t in sells)
+        buy_qty = sum(t["quantity"] for t in buys)
         self.db.save_owned_history({
             "ticker": ticker,
             "shares_peak": peak_shares,
-            "avg_cost": total_bought / sum(t["quantity"] for t in buys) if buys else 0,
+            "avg_cost": total_bought / buy_qty if buy_qty else 0,
             "first_bought": buys[0]["traded_at"] if buys else None,
             "fully_sold_at": sells[-1]["traded_at"] if sells else None,
             "realised_pl": total_sold - total_bought,

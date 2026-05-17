@@ -7,6 +7,10 @@ from flask import Blueprint, current_app, jsonify, render_template, request
 bp = Blueprint("sync", __name__)
 logger = logging.getLogger(__name__)
 
+# Live sync state — readable by the status endpoint so the UI can poll
+_sync_state: dict = {"running": False, "message": "", "trades": 0, "divs": 0}
+_sync_lock = threading.Lock()
+
 _KEY_WARN_DAYS  = 60   # amber warning
 _KEY_ALERT_DAYS = 90   # red alert
 
@@ -24,11 +28,14 @@ def sync_page():
     last_backup      = backup.last_backup_time()
 
     key_warnings = _build_key_warnings(key_ages)
+    with _sync_lock:
+        sync_running = _sync_state["running"]
     return render_template(
         "sync.html",
         trades=trades,
         last_sync=last_sync,
         t212_available=t212.is_available(),
+        sync_running=sync_running,
         key_ages=key_ages,
         key_warnings=key_warnings,
         key_warn_days=_KEY_WARN_DAYS,
@@ -38,10 +45,17 @@ def sync_page():
         backup_configured=backup.is_configured(),
         backup_reachable=backup.destination_reachable(),
         backup_retain_days=backup.retain_days,
+        active_page="sync",
     )
 
 
 # ── T212 sync ──────────────────────────────────────────────────────────────────
+
+@bp.get("/api/sync/status")
+def sync_status():
+    with _sync_lock:
+        return jsonify(dict(_sync_state))
+
 
 @bp.post("/api/sync/t212")
 def sync_t212():
@@ -52,11 +66,22 @@ def sync_t212():
     if not t212.is_available():
         return jsonify({"error": "TRADING212_API_KEY not configured"}), 400
 
+    with _sync_lock:
+        if _sync_state["running"]:
+            return jsonify({"error": "Sync already in progress"}), 409
+        _sync_state.update({"running": True, "message": "Starting…", "trades": 0, "divs": 0})
+
     def _do_sync():
         try:
             since = db.get_latest_trade_time()
             logger.info("T212 sync starting — most recent trade: %s", since or "none (full history fetch)")
+
+            with _sync_lock:
+                _sync_state["message"] = "Fetching trades from Trading 212…"
             orders = t212.get_orders(since=since)
+
+            with _sync_lock:
+                _sync_state["message"] = f"Saving {len(orders)} trades…"
             portfolio.apply_trades(orders)
 
             # Reconcile positions against T212's live positions endpoint.
@@ -65,16 +90,28 @@ def sync_t212():
             # for what is currently open, so we upsert live positions on top.
             _reconcile_positions(t212, db)
 
+            with _sync_lock:
+                _sync_state["trades"] = len(orders)
+                _sync_state["message"] = "Fetching dividends…"
             last_div = _last_dividend_sync(db)
             new_divs = t212.get_dividends(since=last_div)
             if new_divs:
                 saved = db.save_dividends(new_divs)
                 logger.info("Saved %d new dividend payments", saved)
 
+            with _sync_lock:
+                _sync_state["divs"] = len(new_divs)
+                _sync_state["message"] = f"Done — {len(orders)} trades, {len(new_divs)} dividends"
+
             db.set_setting("t212_last_synced_at", datetime.now(timezone.utc).isoformat())
-            logger.info("T212 sync complete")
+            logger.info("T212 sync complete — %d trades, %d dividends", len(orders), len(new_divs))
         except Exception:
             logger.exception("T212 sync failed")
+            with _sync_lock:
+                _sync_state["message"] = "Sync failed — check logs"
+        finally:
+            with _sync_lock:
+                _sync_state["running"] = False
 
     threading.Thread(target=_do_sync, daemon=True, name="t212-sync").start()
     return jsonify({"status": "sync_started"}), 202

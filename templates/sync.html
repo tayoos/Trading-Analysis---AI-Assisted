@@ -224,10 +224,13 @@
     </div>
 
     <div class="action-row">
-      <button class="btn-primary" id="sync-btn" onclick="doSync()" {{ 'disabled' if not t212_available }}>
+      <button class="btn-primary" id="sync-btn" onclick="doSync()"
+              {{ 'disabled' if not t212_available or sync_running }}>
         Sync Now
       </button>
-      <span id="sync-msg" class="inline-msg"></span>
+      <span id="sync-msg" class="inline-msg">
+        {%- if sync_running %}Sync in progress…{% endif -%}
+      </span>
     </div>
 
     {% if trades %}
@@ -399,22 +402,48 @@
 </div>
 
 <script>
+let _syncPolling = false;
+
+async function pollSyncStatus() {
+  try {
+    const r = await fetch('/api/sync/status');
+    const d = await r.json();
+    const btn = document.getElementById('sync-btn');
+    const msg = document.getElementById('sync-msg');
+    if (d.running) {
+      btn.disabled = true;
+      msg.style.color = 'var(--muted)';
+      msg.textContent = d.message || 'Sync in progress…';
+      setTimeout(pollSyncStatus, 2000);
+    } else {
+      _syncPolling = false;
+      btn.disabled = false;
+      if (d.trades > 0 || d.divs > 0) {
+        msg.style.color = '#4caf50';
+        msg.textContent = `Sync complete — ${d.trades} trade(s), ${d.divs} dividend(s) imported`;
+        setTimeout(() => location.reload(), 2500);
+      } else if (msg.textContent && msg.textContent !== 'Sync in progress…') {
+        // Preserve error message from server
+      } else {
+        msg.textContent = '';
+      }
+    }
+  } catch(e) {
+    setTimeout(pollSyncStatus, 5000);
+  }
+}
+
 async function doSync() {
   const btn = document.getElementById('sync-btn');
   const msg = document.getElementById('sync-msg');
   btn.disabled = true;
-  msg.textContent = 'Syncing…';
   msg.style.color = 'var(--muted)';
+  msg.textContent = 'Starting sync…';
   try {
     const r = await fetch('/api/sync/t212', { method: 'POST' });
     if (r.ok) {
-      msg.style.color = '#4caf50';
-      msg.textContent = 'Sync started! Trades will appear in History in a few moments.';
-      // Re-enable button after delay so user can re-sync if needed; no forced reload
-      setTimeout(() => {
-        btn.disabled = false;
-        msg.textContent = '';
-      }, 15000);
+      _syncPolling = true;
+      pollSyncStatus();
     } else {
       const d = await r.json();
       msg.style.color = '#ef5350';
@@ -427,6 +456,12 @@ async function doSync() {
     btn.disabled = false;
   }
 }
+
+// On page load — if a sync was already running before we navigated here, start polling
+{% if sync_running %}
+_syncPolling = true;
+pollSyncStatus();
+{% endif %}
 
 async function markRotated(key, btn) {
   const msgEl = document.getElementById('rot-' + key);
