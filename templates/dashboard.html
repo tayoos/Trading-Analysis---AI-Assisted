@@ -707,9 +707,53 @@
     margin-bottom: 6px;
   }
 
-  .pie-t212-analysis .reasoning {
+  .pie-t212-analysis .reasoning.pie-reasoning {
     color: var(--text);
     line-height: 1.55;
+    margin-bottom: 0;
+  }
+
+  .pie-t212-analysis .reasoning.pie-reasoning.is-expanded {
+    display: block;
+    -webkit-line-clamp: unset;
+    overflow: visible;
+    margin-bottom: 8px;
+  }
+
+  .pie-analysis-expand {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    margin-top: 8px;
+    padding: 6px 0 0;
+    background: none;
+    border: none;
+    border-top: 1px solid var(--border);
+    font-size: 11px;
+    font-weight: 600;
+    color: #b388ff;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    cursor: pointer;
+    text-align: left;
+    transition: color 0.15s;
+  }
+
+  .pie-analysis-expand:hover { color: #d1b3ff; }
+
+  .pie-analysis-extra {
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid var(--border);
+  }
+
+  .pie-analysis-extra .tag-groups { margin-top: 8px; }
+
+  .card-detail .reasoning {
+    display: block;
+    -webkit-line-clamp: unset;
+    overflow: visible;
   }
 
   .pie-t212-holdings-label {
@@ -1341,6 +1385,19 @@
     const isOpen = detail.style.display !== 'none';
     detail.style.display = isOpen ? 'none' : 'block';
     chevron.classList.toggle('open', !isOpen);
+  }
+
+  function togglePieAnalysis(btn) {
+    const block = btn.closest('.pie-t212-analysis');
+    const reasoning = block.querySelector('.pie-reasoning');
+    const extra = block.querySelector('.pie-analysis-extra');
+    const chevron = btn.querySelector('.expand-chevron');
+    const label = btn.querySelector('.pie-analysis-expand-label');
+    const expanded = reasoning.classList.toggle('is-expanded');
+    btn.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+    label.textContent = expanded ? 'Show less' : 'Read full analysis';
+    chevron.classList.toggle('open', expanded);
+    if (extra && extra.children.length) extra.hidden = !expanded;
   }
 
   // Inject company names from server-side data
