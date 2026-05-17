@@ -224,6 +224,12 @@ def _fetch_prices(
             errors[db_ticker] = "no data from yfinance"
 
     if errors:
-        logger.warning("Live price fetch failed for: %s", ", ".join(errors))
+        for ticker, reason in errors.items():
+            logger.warning("price_fetch | ticker=%s | %s", ticker, reason)
+        logger.warning(
+            "Live price fetch failed for %d ticker(s): %s",
+            len(errors),
+            ", ".join(sorted(errors)),
+        )
 
     return prices, errors

@@ -20,8 +20,20 @@ logger = logging.getLogger(__name__)
 _SKIP_NAME_WORDS = frozenset({
     "THE", "AND", "INC", "LTD", "PLC", "CORP", "CORPORATION", "COMPANY",
     "CO", "GROUP", "HOLDINGS", "HOLDING", "CLASS", "COMMON", "ORDINARY",
-    "SHARES", "STOCK", "LIMITED", "LLC", "SA", "NV", "AG", "SE",
+    "SHARES", "STOCK", "LIMITED", "LLC", "SA", "NV", "AG", "SE", "AI",
 })
+
+_ISIN_RE = re.compile(r"^[A-Z]{2}[A-Z0-9]{9}\d$")
+
+
+def _is_isin(value: str) -> bool:
+    v = (value or "").upper().strip()
+    return bool(_ISIN_RE.match(v))
+
+
+def _is_valid_yf_symbol(value: str) -> bool:
+    """ISINs are not valid yfinance tickers — never use them as market_ticker."""
+    return bool(value) and not _is_isin(value)
 
 
 def _quote_price(symbol: str) -> Optional[float]:
@@ -116,23 +128,16 @@ def resolve_market_ticker(
                 return candidate.upper()
         return None
 
-    # 1) T212 short code and UK variants
+    # 1) T212 short code — only when the public quote matches the wallet price
     hit = try_symbol(db_ticker)
-    if hit:
+    if hit and _is_valid_yf_symbol(hit):
         return hit.upper()
 
-    # 2) ISIN (works for some listings)
-    if isin:
-        hit = try_symbol(isin)
-        if hit:
-            logger.info("Resolved %s → %s via ISIN %s", db_ticker, hit, isin)
-            return hit.upper()
-
-    # 3) Tokens from instrument name (e.g. TMC from "TMC The Metals Company")
+    # 2) Company name (legacy T212 codes like IVAN → SES for "SES AI")
     if instrument_name:
         for sym in _symbols_from_name(instrument_name):
             hit = try_symbol(sym)
-            if hit:
+            if hit and _is_valid_yf_symbol(hit):
                 logger.info(
                     "Resolved %s → %s from name token %s (%s)",
                     db_ticker, hit, sym, instrument_name,
@@ -140,11 +145,18 @@ def resolve_market_ticker(
                 return hit.upper()
 
         found = _search_yfinance(instrument_name, reference_price)
-        if found:
+        if found and _is_valid_yf_symbol(found):
             logger.info(
                 "Resolved %s → %s via yfinance search (%s)",
                 db_ticker, found, instrument_name,
             )
+            return found.upper()
+
+    # 3) ISIN — never use the raw ISIN string as a yfinance symbol
+    if isin and _is_isin(isin) and instrument_name:
+        found = _search_yfinance(f"{instrument_name} {isin}", reference_price)
+        if found and _is_valid_yf_symbol(found):
+            logger.info("Resolved %s → %s via ISIN-assisted search", db_ticker, found)
             return found.upper()
 
     logger.warning(

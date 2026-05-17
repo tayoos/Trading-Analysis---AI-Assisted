@@ -7,11 +7,14 @@
   {% set pie_inv = pie.invested_value or 0 %}
   {% set pie_pnl = (pie_val - pie_inv) if (pie_val and pie_inv) else 0 %}
   {% set pie_pnl_pct = (pie_pnl / pie_inv * 100) if pie_inv else 0 %}
-  <details class="pie-t212">
+  <details class="pie-t212" data-ticker="{{ pie.analysis_ticker }}">
     <summary class="pie-t212-head">
       <span class="pie-t212-icon" aria-hidden="true">{{ pie.icon or '🥧' }}</span>
       <span class="pie-t212-main">
-        <span class="pie-t212-name">{{ pie.name }}</span>
+        <span class="pie-t212-name">
+          <span class="analysis-spinner" aria-hidden="true"></span>
+          {{ pie.name }}
+        </span>
         <span class="pie-t212-sub">{{ pie.member_cards|length }} stocks{% if pie.reinvested %} · £{{ '%.0f'|format(pie.reinvested) }} reinvested{% endif %}</span>
       </span>
       <span class="pie-t212-stats">

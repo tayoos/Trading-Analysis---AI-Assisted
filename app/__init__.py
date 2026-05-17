@@ -4,6 +4,7 @@ import ipaddress
 import logging
 import os
 import time
+from zoneinfo import ZoneInfo
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -23,6 +24,10 @@ logger = logging.getLogger(__name__)
 
 
 def create_app() -> Flask:
+    from .logging_setup import configure_logging
+
+    configure_logging()
+
     app = Flask(__name__, template_folder="../templates")
     app.secret_key = os.getenv("SECRET_KEY", os.urandom(24).hex())
 
@@ -264,13 +269,36 @@ def _load_env() -> None:
         pass
 
 
+def _schedule_timezone() -> ZoneInfo:
+    """Timezone for cron triggers — defaults to TZ (e.g. Europe/London)."""
+    name = os.getenv("SCHEDULE_TIMEZONE") or os.getenv("TZ", "Europe/London")
+    try:
+        return ZoneInfo(name)
+    except Exception:
+        logger.warning("Invalid schedule timezone %r — using UTC", name)
+        return ZoneInfo("UTC")
+
+
+def _day_names(day_of_week: str) -> str:
+    labels = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
+    parts = []
+    for d in day_of_week.split(","):
+        try:
+            parts.append(labels[int(d.strip())])
+        except (ValueError, IndexError):
+            pass
+    return "/".join(parts) if parts else day_of_week
+
+
 def _setup_scheduler(app: Flask, analyzer: StockAnalyzer,
                      portfolio: PortfolioManager, t212: T212DataSource,
                      backup: BackupManager) -> None:
+    schedule_enabled = os.getenv("SCHEDULE_ENABLED", "true").lower() == "true"
     days_raw = os.getenv("SCHEDULE_DAYS", "0,2,5")
-    hour = int(os.getenv("SCHEDULE_HOUR", "7"))
-    sync_offset = int(os.getenv("T212_SYNC_OFFSET_MINS", "30"))
+    hour = int(os.getenv("SCHEDULE_HOUR", "3"))
+    minute = int(os.getenv("SCHEDULE_MINUTE", "0"))
     sync_enabled = os.getenv("T212_SYNC_ENABLED", "true").lower() == "true"
+    tz = _schedule_timezone()
 
     try:
         day_of_week = ",".join(str(int(d.strip())) for d in days_raw.split(","))
@@ -279,28 +307,32 @@ def _setup_scheduler(app: Flask, analyzer: StockAnalyzer,
 
     scheduler = BackgroundScheduler(daemon=True)
 
-    if sync_enabled and t212.is_available():
-        sync_minute = 60 - sync_offset if sync_offset < 60 else 0
-        sync_hour   = hour - 1 if sync_offset >= 60 else hour
+    if schedule_enabled:
         scheduler.add_job(
-            func=_sync_job,
-            args=[app, t212, portfolio],
-            trigger=CronTrigger(day_of_week=day_of_week, hour=sync_hour, minute=sync_minute),
-            id="t212_sync",
-            name="T212 pre-run sync",
+            func=_scheduled_sync_and_analysis_job,
+            args=[app, t212, portfolio, analyzer, sync_enabled],
+            trigger=CronTrigger(
+                day_of_week=day_of_week,
+                hour=hour,
+                minute=minute,
+                timezone=tz,
+            ),
+            id="scheduled_run",
+            name="T212 sync + analysis",
             replace_existing=True,
         )
-        logger.info("Scheduled T212 sync at %02d:%02d on days %s", sync_hour, sync_minute, day_of_week)
-
-    scheduler.add_job(
-        func=_analysis_job,
-        args=[app, analyzer, portfolio],
-        trigger=CronTrigger(day_of_week=day_of_week, hour=hour, minute=0),
-        id="analysis",
-        name="Stock analysis",
-        replace_existing=True,
-    )
-    logger.info("Scheduled analysis at %02d:00 on days %s", hour, day_of_week)
+        sync_part = "T212 sync then analysis" if (sync_enabled and t212.is_available()) else "analysis only"
+        logger.info(
+            "Scheduled %s at %02d:%02d %s on %s (days %s)",
+            sync_part,
+            hour,
+            minute,
+            tz,
+            _day_names(day_of_week),
+            day_of_week,
+        )
+    else:
+        logger.info("SCHEDULE_ENABLED=false — automatic sync/analysis disabled (manual runs still work)")
 
     # Nightly backup at 02:00 UTC
     if backup.is_configured():
@@ -320,8 +352,32 @@ def _setup_scheduler(app: Flask, analyzer: StockAnalyzer,
     app.extensions["scheduler"] = scheduler
 
 
+def _scheduled_sync_and_analysis_job(
+    app: Flask,
+    t212: T212DataSource,
+    portfolio: PortfolioManager,
+    analyzer: StockAnalyzer,
+    sync_enabled: bool,
+) -> None:
+    """Mon/Wed/Sat (configurable): sync portfolio from T212, then run AI analysis."""
+    with app.app_context():
+        logger.info("Starting scheduled sync + analysis run")
+        if sync_enabled and t212.is_available():
+            _sync_job(app, t212, portfolio)
+        else:
+            logger.info("Skipping T212 sync (disabled or API not configured)")
+        _analysis_job(app, analyzer, portfolio)
+
+
 def _sync_job(app: Flask, t212: T212DataSource, portfolio: PortfolioManager) -> None:
     with app.app_context():
+        from .routes.sync import _sync_state, _sync_lock
+
+        with _sync_lock:
+            if _sync_state["running"]:
+                logger.warning("Skipping scheduled T212 sync — manual sync already in progress")
+                return
+
         logger.info("Running scheduled T212 sync")
         try:
             from datetime import datetime, timezone
@@ -365,6 +421,9 @@ def _backup_job(app: Flask, backup: BackupManager) -> None:
 
 def _analysis_job(app: Flask, analyzer: StockAnalyzer, portfolio: PortfolioManager) -> None:
     with app.app_context():
+        if analyzer.status["status"] == "running":
+            logger.warning("Skipping scheduled analysis — analysis already in progress")
+            return
         logger.info("Running scheduled analysis")
         holdings = portfolio.get_holdings()
         if holdings:
@@ -378,26 +437,9 @@ def _analysis_job(app: Flask, analyzer: StockAnalyzer, portfolio: PortfolioManag
 
 
 def main() -> None:
-    import os
-    from logging.handlers import RotatingFileHandler
+    from .logging_setup import configure_logging
 
-    log_dir = "/data/logs"
-    os.makedirs(log_dir, exist_ok=True)
-
-    fmt     = "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
-    datefmt = "%Y-%m-%d %H:%M:%S"
-    handlers: list[logging.Handler] = [logging.StreamHandler()]
-    try:
-        handlers.append(RotatingFileHandler(
-            os.path.join(log_dir, "app.log"),
-            maxBytes=5 * 1024 * 1024,
-            backupCount=5,
-            encoding="utf-8",
-        ))
-    except OSError:
-        pass  # /data not mounted yet at startup (shouldn't happen)
-
-    logging.basicConfig(level=logging.INFO, format=fmt, datefmt=datefmt, handlers=handlers)
+    configure_logging()
     try:
         app = create_app()
     except Exception:
