@@ -221,6 +221,13 @@
 
     <div class="card-meta">
       Last sync: <strong id="last-sync-time">{{ last_sync[:19].replace('T', ' ') + ' UTC' if last_sync else 'Never' }}</strong>
+      {% if capital.synced_at %}
+      <br>Net deposit: <strong>{% if capital.net_deposits is not none %}£{{ '{:,.2f}'.format(capital.net_deposits) }}{% else %}—{% endif %}</strong>
+      · Currently invested: <strong>{% if capital.holdings_cost is not none %}£{{ '{:,.2f}'.format(capital.holdings_cost) }}{% else %}—{% endif %}</strong>
+      {% if capital.last_error == 'missing_transactions_scope' %}
+      <br><span style="color:var(--hold-short)">Enable <code>history:transactions</code> on your T212 API key for net deposit.</span>
+      {% endif %}
+      {% endif %}
     </div>
     <script>
       (function() {

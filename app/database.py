@@ -538,12 +538,17 @@ class Database:
         if raw["capital_reinvested"] is not None and raw["capital_reinvested"] != "":
             reinvested = float(raw["capital_reinvested"])
 
+        last_error = self.get_setting("capital_last_error") or None
+        if last_error == "":
+            last_error = None
+
         return {
             "net_deposits":        net,
             "holdings_cost":       float(raw["capital_holdings_cost"]) if raw["capital_holdings_cost"] else None,
             "reinvested":          reinvested,
             "synced_at":           raw["capital_synced_at"],
             "transaction_count":   tx_count,
+            "last_error":          last_error,
         }
 
     def save_capital_metrics(self, metrics: dict) -> None:
