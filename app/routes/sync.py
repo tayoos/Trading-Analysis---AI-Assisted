@@ -280,6 +280,8 @@ def _reconcile_positions(t212, db) -> None:
             shares=pos.shares,
             avg_cost=pos.avg_cost,
             source="trading212",
+            current_price=pos.current_price,
+            instrument_name=pos.instrument_name,
         )
     removed = db.prune_positions_not_in(live_tickers, source="trading212")
     if removed:

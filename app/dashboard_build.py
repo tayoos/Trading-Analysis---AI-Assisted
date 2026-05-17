@@ -48,8 +48,18 @@ def build_card(
         card["shares"] = p.get("shares")
     if ticker in live_prices:
         card["current_price"] = live_prices[ticker]
-    card["company_name"] = (company_names or {}).get(ticker) or ""
-    card["price_error"] = (price_errors or {}).get(ticker)
+        card["price_source"] = "market"
+    elif p.get("current_price"):
+        card["current_price"] = float(p["current_price"])
+        card["price_source"] = "t212"
+    card["company_name"] = (
+        (company_names or {}).get(ticker)
+        or p.get("instrument_name")
+        or ""
+    )
+    card["price_error"] = (
+        None if card.get("current_price") else (price_errors or {}).get(ticker)
+    )
     card["handoff_note"] = handoff_notes.get(ticker)
     return card
 

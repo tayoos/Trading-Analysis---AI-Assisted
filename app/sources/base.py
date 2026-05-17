@@ -19,6 +19,8 @@ class Position:
     ticker: str
     shares: float
     avg_cost: float      # cost per share in account currency
+    current_price: Optional[float] = None   # from T212 when available
+    instrument_name: Optional[str] = None
 
 
 class DataSource(ABC):

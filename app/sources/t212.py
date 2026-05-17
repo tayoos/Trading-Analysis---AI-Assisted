@@ -66,11 +66,21 @@ class T212DataSource(DataSource):
                 avg_cost = float(total_cost) / qty
             else:
                 avg_cost = float(item.get("averagePricePaid", 0))
+            instrument = item.get("instrument") or {}
+            raw_price = item.get("currentPrice")
+            current_price = float(raw_price) if raw_price is not None else None
+            inst_name = instrument.get("name") or None
             logger.debug(
                 "T212   position %s: qty=%.4f avg_cost=%.4f currency=%s",
                 ticker, qty, avg_cost, wallet.get("currency", "?"),
             )
-            positions.append(Position(ticker=ticker, shares=qty, avg_cost=avg_cost))
+            positions.append(Position(
+                ticker=ticker,
+                shares=qty,
+                avg_cost=avg_cost,
+                current_price=current_price,
+                instrument_name=inst_name,
+            ))
         logger.info("T212 ✓ %d positions", len(positions))
         return positions
 

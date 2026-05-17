@@ -159,6 +159,15 @@ class Database:
                 CREATE INDEX IF NOT EXISTS idx_trades_ticker ON trades(ticker);
                 CREATE INDEX IF NOT EXISTS idx_dividends_ticker ON dividends(ticker);
             """)
+            self._migrate_schema(conn)
+
+    def _migrate_schema(self, conn) -> None:
+        """Add columns to existing databases created before schema updates."""
+        cols = {row[1] for row in conn.execute("PRAGMA table_info(positions)")}
+        if "current_price" not in cols:
+            conn.execute("ALTER TABLE positions ADD COLUMN current_price REAL")
+        if "instrument_name" not in cols:
+            conn.execute("ALTER TABLE positions ADD COLUMN instrument_name TEXT")
 
     # ── Runs ───────────────────────────────────────────────────────────────────
 
@@ -324,16 +333,31 @@ class Database:
             rows = conn.execute("SELECT * FROM positions ORDER BY ticker").fetchall()
             return [dict(r) for r in rows]
 
-    def upsert_position(self, ticker: str, shares: float, avg_cost: float,
-                        source: str = "manual", first_bought: Optional[str] = None) -> None:
+    def upsert_position(
+        self,
+        ticker: str,
+        shares: float,
+        avg_cost: float,
+        source: str = "manual",
+        first_bought: Optional[str] = None,
+        current_price: Optional[float] = None,
+        instrument_name: Optional[str] = None,
+    ) -> None:
         with self._conn() as conn:
             conn.execute(
-                """INSERT INTO positions (ticker, shares, avg_cost, source, first_bought, last_updated)
-                   VALUES (?,?,?,?,?,?)
+                """INSERT INTO positions
+                   (ticker, shares, avg_cost, source, first_bought, last_updated,
+                    current_price, instrument_name)
+                   VALUES (?,?,?,?,?,?,?,?)
                    ON CONFLICT(ticker) DO UPDATE SET
                      shares=excluded.shares, avg_cost=excluded.avg_cost,
-                     source=excluded.source, last_updated=excluded.last_updated""",
-                (ticker, shares, avg_cost, source, first_bought, _now()),
+                     source=excluded.source, last_updated=excluded.last_updated,
+                     current_price=excluded.current_price,
+                     instrument_name=excluded.instrument_name""",
+                (
+                    ticker, shares, avg_cost, source, first_bought, _now(),
+                    current_price, instrument_name,
+                ),
             )
 
     def delete_position(self, ticker: str) -> None:
