@@ -42,8 +42,16 @@ class T212DataSource(DataSource):
         data = self._get("/api/v0/equity/positions")
         positions = []
         for item in data:
-            ticker = self._normalise_ticker(item.get("ticker", ""))
+            # Per API spec, ticker lives in item["instrument"]["ticker"].
+            # T212 also returns it as a top-level convenience field on some responses,
+            # so try both to be safe.
+            raw_ticker = (
+                item.get("ticker")
+                or item.get("instrument", {}).get("ticker", "")
+            )
+            ticker = self._normalise_ticker(raw_ticker)
             if not ticker:
+                logger.warning("T212 position item has no ticker — skipping: %s", list(item.keys()))
                 continue
             wallet = item.get("walletImpact", {})
             qty    = float(item.get("quantity", 0))
