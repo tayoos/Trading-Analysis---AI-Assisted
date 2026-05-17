@@ -7,23 +7,23 @@
   {% block head %}{% endblock %}
   <style>
     :root {
-      --bg: #0f1117;
-      --surface: #1a1d2e;
-      --surface2: #242740;
-      --border: #2d3156;
-      --text: #e2e4f0;
-      --muted: #7b7fa8;
-      --buy: #2196f3;
-      --hold: #78909c;
-      --sell: #ef5350;
-      --hold-long: #4caf50;
+      --bg:         #111827;
+      --surface:    #1a2035;
+      --surface2:   #222845;
+      --border:     #2a3255;
+      --text:       #e8eaf0;
+      --muted:      #6b7499;
+      --buy:        #00c896;
+      --hold:       #78909c;
+      --sell:       #f0443a;
+      --hold-long:  #00c896;
       --hold-short: #ff9800;
-      --watch: #9c27b0;
-      --pos: #4caf50;
-      --neg: #ef5350;
-      --neu: #78909c;
-      --radius: 10px;
-      --gap: 14px;
+      --watch:      #9c27b0;
+      --pos:        #00c896;
+      --neg:        #f0443a;
+      --neu:        #78909c;
+      --radius:     12px;
+      --gap:        14px;
     }
 
     *, *::before, *::after {
@@ -186,12 +186,12 @@
       line-height: 1.4;
     }
 
-    .badge-BUY        { background: var(--buy);        color: #fff; }
-    .badge-SELL       { background: var(--sell);       color: #fff; }
-    .badge-HOLD_LONG  { background: var(--hold-long);  color: #fff; }
-    .badge-HOLD_SHORT { background: var(--hold-short); color: #000; }
-    .badge-HOLD       { background: var(--hold);       color: #fff; }
-    .badge-WATCH      { background: var(--watch);      color: #fff; }
+    .badge-BUY        { background: rgba(0,200,150,.18);  color: #00c896; border: 1px solid rgba(0,200,150,.3); }
+    .badge-SELL       { background: rgba(240,68,58,.18);  color: #f0443a; border: 1px solid rgba(240,68,58,.3); }
+    .badge-HOLD_LONG  { background: rgba(0,200,150,.12);  color: #00c896; border: 1px solid rgba(0,200,150,.2); }
+    .badge-HOLD_SHORT { background: rgba(255,152,0,.15);  color: #ff9800; border: 1px solid rgba(255,152,0,.25); }
+    .badge-HOLD       { background: rgba(120,144,156,.15); color: #aab4bc; border: 1px solid rgba(120,144,156,.25); }
+    .badge-WATCH      { background: rgba(156,39,176,.15); color: #ce93d8; border: 1px solid rgba(156,39,176,.25); }
 
     /* Status badges for history */
     .badge-done    { background: rgba(76,175,80,.18);   color: var(--pos); }

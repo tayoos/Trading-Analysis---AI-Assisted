@@ -220,8 +220,22 @@
     {% endif %}
 
     <div class="card-meta">
-      Last sync: <strong>{{ last_sync[:19].replace('T', ' ') + ' UTC' if last_sync else 'Never' }}</strong>
+      Last sync: <strong id="last-sync-time">{{ last_sync[:19].replace('T', ' ') + ' UTC' if last_sync else 'Never' }}</strong>
     </div>
+    <script>
+      (function() {
+        var raw = {{ (last_sync ~ 'Z') | tojson if last_sync else 'null' }};
+        if (raw) {
+          var d = new Date(raw.replace(' ', 'T'));
+          if (!isNaN(d)) {
+            document.getElementById('last-sync-time').textContent = d.toLocaleString([], {
+              year: 'numeric', month: '2-digit', day: '2-digit',
+              hour: '2-digit', minute: '2-digit', second: '2-digit'
+            });
+          }
+        }
+      })();
+    </script>
 
     <div class="action-row">
       <button class="btn-primary" id="sync-btn" onclick="doSync()"
@@ -284,8 +298,22 @@
         {% endif %}
       </div>
       <div class="bstat">
-        Last backup: <strong>{{ last_backup[:19].replace('T', ' ') if last_backup else 'Never' }}</strong>
+        Last backup: <strong id="last-backup-time">{{ last_backup[:19].replace('T', ' ') + ' UTC' if last_backup else 'Never' }}</strong>
       </div>
+      <script>
+        (function() {
+          var raw = {{ (last_backup ~ 'Z') | tojson if last_backup else 'null' }};
+          if (raw) {
+            var d = new Date(raw.replace(' ', 'T'));
+            if (!isNaN(d)) {
+              document.getElementById('last-backup-time').textContent = d.toLocaleString([], {
+                year: 'numeric', month: '2-digit', day: '2-digit',
+                hour: '2-digit', minute: '2-digit', second: '2-digit'
+              });
+            }
+          }
+        })();
+      </script>
       <div class="bstat">
         Retention: <strong>{{ backup_retain_days }} days</strong>
       </div>
