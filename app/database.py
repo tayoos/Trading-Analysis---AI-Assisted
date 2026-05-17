@@ -336,6 +336,24 @@ class Database:
                 (ticker, shares, avg_cost, source, first_bought, _now()),
             )
 
+    def delete_position(self, ticker: str) -> None:
+        with self._conn() as conn:
+            conn.execute("DELETE FROM positions WHERE ticker=?", (ticker,))
+
+    def prune_positions_not_in(self, tickers: set[str], source: str = "trading212") -> list[str]:
+        """Remove DB positions from a given source that T212 no longer reports as open."""
+        removed: list[str] = []
+        with self._conn() as conn:
+            rows = conn.execute(
+                "SELECT ticker FROM positions WHERE source=?", (source,)
+            ).fetchall()
+            for row in rows:
+                t = row["ticker"]
+                if t not in tickers:
+                    conn.execute("DELETE FROM positions WHERE ticker=?", (t,))
+                    removed.append(t)
+        return removed
+
     # ── Trades ─────────────────────────────────────────────────────────────────
 
     def save_trades(self, trades: list[dict]) -> int:

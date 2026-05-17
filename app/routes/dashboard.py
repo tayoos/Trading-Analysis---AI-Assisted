@@ -11,6 +11,14 @@ def index():
     db          = current_app.extensions["db"]
     price_cache = current_app.extensions["price_cache"]
 
+    positions = db.get_positions()
+    tickers = [p["ticker"] for p in positions]
+    if tickers:
+        snap = price_cache.get_prices()
+        names = snap.get("names") or {}
+        if price_cache.is_stale() or sum(1 for t in tickers if t not in names) > len(tickers) // 2:
+            price_cache.refresh(tickers)
+
     view = build_dashboard_view(db, price_cache)
     key_warnings   = _build_key_warnings(db.get_key_ages())
     dividend_stats = db.get_dividend_stats()

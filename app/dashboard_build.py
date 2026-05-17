@@ -19,6 +19,8 @@ def build_card(
     position: dict | None,
     live_prices: dict,
     handoff_notes: dict,
+    company_names: dict | None = None,
+    price_errors: dict | None = None,
 ) -> dict:
     ticker = (analysis or position or {}).get("ticker", "")
     card = dict(analysis) if analysis else {
@@ -42,6 +44,8 @@ def build_card(
         card["shares"] = p.get("shares")
     if ticker in live_prices:
         card["current_price"] = live_prices[ticker]
+    card["company_name"] = (company_names or {}).get(ticker) or ""
+    card["price_error"] = (price_errors or {}).get(ticker)
     card["handoff_note"] = handoff_notes.get(ticker)
     return card
 
@@ -58,6 +62,8 @@ def build_dashboard_view(
 
     price_data = price_cache.get_prices()
     live_prices = price_data["prices"]
+    company_names = price_data.get("names") or {}
+    price_errors = price_data.get("errors") or {}
 
     analysis_map = {a["ticker"]: a for a in analyses if not is_pie_ticker(a["ticker"])}
     pie_analysis_map = {a["ticker"]: a for a in analyses if is_pie_ticker(a["ticker"])}
@@ -91,13 +97,17 @@ def build_dashboard_view(
         if is_pie_ticker(a["ticker"]):
             continue
         ticker = a["ticker"]
-        cards_by_ticker[ticker] = build_card(a, pos_map.get(ticker), live_prices, handoff_notes)
+        cards_by_ticker[ticker] = build_card(
+            a, pos_map.get(ticker), live_prices, handoff_notes, company_names, price_errors,
+        )
         analysed.add(ticker)
 
     for p in positions:
         ticker = p["ticker"]
         if ticker not in analysed:
-            cards_by_ticker[ticker] = build_card(None, p, live_prices, handoff_notes)
+            cards_by_ticker[ticker] = build_card(
+                None, p, live_prices, handoff_notes, company_names, price_errors,
+            )
 
     pie_groups = []
     for pie in pies:

@@ -92,6 +92,7 @@ class PortfolioManager:
                     first_bought=first_bought,
                 )
             else:
+                self.db.delete_position(ticker)
                 # Position fully closed — move to owned_history if not already there
                 self._record_closed_position(ticker, trades)
 

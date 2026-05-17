@@ -267,12 +267,21 @@ def _reconcile_positions(t212, db) -> None:
         logger.info("T212 reconcile: no open positions reported by T212")
         return
 
+    live_tickers: set[str] = set()
     for pos in live:
+        live_tickers.add(pos.ticker)
         db.upsert_position(
             ticker=pos.ticker,
             shares=pos.shares,
             avg_cost=pos.avg_cost,
             source="trading212",
+        )
+    removed = db.prune_positions_not_in(live_tickers, source="trading212")
+    if removed:
+        logger.info(
+            "T212 reconcile: removed %d stale position(s) not on T212: %s",
+            len(removed),
+            ", ".join(sorted(removed)),
         )
     logger.info("T212 reconcile: upserted %d live position(s) from T212", len(live))
 

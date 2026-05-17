@@ -81,12 +81,7 @@ class LivePriceCache:
         with self._lock:
             missing = [t for t in tickers if t not in self._names]
         if missing:
-            threading.Thread(
-                target=self._fetch_names,
-                args=(missing,),
-                daemon=True,
-                name="name-fetch",
-            ).start()
+            self._fetch_names(missing)
         return self.get_prices()
 
     def refresh_in_background(self, tickers: list[str]) -> None:
@@ -136,9 +131,9 @@ _LSE_SUFFIXES = (".L", ".IL")  # London Stock Exchange, Ireland listing
 
 
 def _ticker_candidates(ticker: str) -> list[str]:
-    """Return yfinance ticker variants to try in order."""
+    """Return yfinance ticker variants to try in order (UK listings often need .L)."""
     if "." in ticker:
-        return [ticker]  # already has a suffix
+        return [ticker]
     return [ticker, f"{ticker}.L"]
 
 
