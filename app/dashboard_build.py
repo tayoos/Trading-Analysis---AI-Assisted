@@ -47,20 +47,37 @@ def build_card(
         card["cost_basis"] = p.get("avg_cost")
         card["shares"] = p.get("shares")
     shares = float(card.get("shares") or p.get("shares") or 0)
-    if p.get("position_value") is not None:
-        card["position_value"] = float(p["position_value"])
+    t212_value = p.get("position_value")
+    t212_price = p.get("current_price")
+
+    # T212 wallet fields (synced): all in account currency (e.g. GBP)
+    if t212_value is not None:
+        card["position_value"] = float(t212_value)
         if shares > 0:
-            card["current_price"] = card["position_value"] / shares
-            card["price_source"] = "t212"
+            card["current_price"] = float(t212_price) if t212_price else card["position_value"] / shares
+        card["price_source"] = "t212"
     if p.get("unrealized_pnl") is not None:
         card["unrealized_pnl"] = float(p["unrealized_pnl"])
 
-    if ticker in live_prices and card.get("price_source") != "t212":
-        card["current_price"] = live_prices[ticker]
-        card["price_source"] = "market"
-        card.pop("position_value", None)
-    elif card.get("current_price") is None and p.get("current_price"):
-        card["current_price"] = float(p["current_price"])
+    # Live market price: recalculate value only when we trust the quote (no T212 wallet
+    # or price is in the same ballpark — avoids UK pence symbols like TM1L → £0.07).
+    if ticker in live_prices and shares > 0:
+        live = float(live_prices[ticker])
+        t212_px = card.get("current_price")
+        use_live = t212_value is None or (
+            t212_px
+            and t212_px > 0
+            and 0.2 <= (live / t212_px) <= 5.0
+        )
+        if use_live:
+            card["current_price"] = live
+            card["position_value"] = round(live * shares, 2)
+            card["price_source"] = "market"
+            if p.get("unrealized_pnl") is not None and p.get("avg_cost"):
+                cost_basis = float(p["avg_cost"]) * shares
+                card["unrealized_pnl"] = round(card["position_value"] - cost_basis, 2)
+    elif t212_price and card.get("current_price") is None:
+        card["current_price"] = float(t212_price)
         card["price_source"] = "t212"
     card["company_name"] = (
         (company_names or {}).get(ticker)
