@@ -2,6 +2,7 @@
 Capital metrics: net deposits vs reinvested gains/dividends.
 """
 import logging
+import os
 from typing import Optional
 
 logger = logging.getLogger(__name__)
@@ -11,18 +12,18 @@ def net_deposits_from_transactions(transactions: list[dict]) -> float:
     """
     Sum of deposits minus withdrawals (and outbound transfers).
     Matches Trading 212 'net deposit' — money you put in from outside the account.
+    T212 amounts may be signed either way; we always use absolute values per type.
     """
     total = 0.0
     for tx in transactions:
         tx_type = (tx.get("type") or "").upper()
-        amount = float(tx.get("amount", 0))
+        amount = abs(float(tx.get("amount", 0)))
         if tx_type == "DEPOSIT":
             total += amount
         elif tx_type in ("WITHDRAW", "TRANSFER"):
-            total -= abs(amount)
-        # FEE entries are usually negative amounts already
+            total -= amount
         elif tx_type == "FEE":
-            total += amount
+            total -= amount
     return round(total, 2)
 
 
@@ -54,35 +55,70 @@ def sync_capital_from_t212(t212, db, holdings_cost: float) -> dict:
     if not t212.is_available():
         return db.get_capital_metrics()
 
+    override = os.getenv("NET_DEPOSITS_OVERRIDE", "").strip()
+    cached = db.get_capital_metrics()
+
     try:
         summary = t212.get_account_summary()
     except Exception:
         logger.warning("Could not fetch T212 account summary for capital metrics")
         summary = None
 
+    transactions: list[dict] = []
     try:
         transactions = t212.get_transactions()
     except Exception:
         logger.warning("Could not fetch T212 transactions for capital metrics")
-        transactions = []
 
-    metrics = compute_capital_metrics(transactions, holdings_cost, summary)
+    if transactions:
+        metrics = compute_capital_metrics(transactions, holdings_cost, summary)
+        metrics["transaction_count"] = len(transactions)
+    else:
+        # Do not overwrite a good cached net deposit when the API returns nothing
+        logger.warning(
+            "No transactions from T212 — keeping cached net deposits (%s)",
+            cached.get("net_deposits"),
+        )
+        cost = float((summary or {}).get("investments_cost") or holdings_cost)
+        metrics = {
+            "net_deposits":    cached.get("net_deposits"),
+            "holdings_cost":   round(cost, 2),
+            "reinvested":      None,
+            "transaction_count": cached.get("transaction_count") or 0,
+        }
+        if metrics["net_deposits"] is not None:
+            metrics["reinvested"] = max(0.0, round(metrics["holdings_cost"] - metrics["net_deposits"], 2))
+
+    if override:
+        try:
+            metrics["net_deposits"] = round(float(override), 2)
+            metrics["reinvested"] = max(
+                0.0,
+                round(metrics["holdings_cost"] - metrics["net_deposits"], 2),
+            )
+            logger.info("Using NET_DEPOSITS_OVERRIDE=£%.2f", metrics["net_deposits"])
+        except ValueError:
+            logger.warning("Invalid NET_DEPOSITS_OVERRIDE: %r", override)
+
     db.save_capital_metrics(metrics)
     logger.info(
-        "Capital metrics: net_deposits=£%.2f holdings_cost=£%.2f reinvested=£%.2f",
-        metrics["net_deposits"], metrics["holdings_cost"], metrics["reinvested"],
+        "Capital metrics: net_deposits=%s holdings_cost=£%.2f reinvested=%s (%d transactions)",
+        metrics.get("net_deposits"),
+        metrics["holdings_cost"],
+        metrics.get("reinvested"),
+        metrics.get("transaction_count", 0),
     )
     return metrics
 
 
 def pie_display_name(settings: dict, pie_id: int) -> str:
-    """Best-effort pie label from T212 settings."""
+    """Best-effort pie label from T212 settings (often stored in icon)."""
     for key in ("name", "title", "displayName"):
         if settings.get(key):
             return str(settings[key])
     icon = settings.get("icon")
-    if icon:
-        return f"{icon} Pie"
+    if icon and len(str(icon).strip()) > 2:
+        return str(icon).strip()
     return f"Pie {pie_id}"
 
 

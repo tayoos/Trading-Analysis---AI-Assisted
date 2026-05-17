@@ -522,13 +522,28 @@ class Database:
             "capital_holdings_cost",
             "capital_reinvested",
             "capital_synced_at",
+            "capital_transaction_count",
         )
         raw = {k: self.get_setting(k) for k in keys}
+        tx_count = int(raw["capital_transaction_count"] or 0)
+
+        net = None
+        if raw["capital_net_deposits"] is not None and raw["capital_net_deposits"] != "":
+            net = float(raw["capital_net_deposits"])
+            # £0 with no transaction history usually means a failed fetch, not a real balance
+            if net == 0.0 and tx_count == 0:
+                net = None
+
+        reinvested = None
+        if raw["capital_reinvested"] is not None and raw["capital_reinvested"] != "":
+            reinvested = float(raw["capital_reinvested"])
+
         return {
-            "net_deposits":    float(raw["capital_net_deposits"]) if raw["capital_net_deposits"] else None,
-            "holdings_cost":   float(raw["capital_holdings_cost"]) if raw["capital_holdings_cost"] else None,
-            "reinvested":      float(raw["capital_reinvested"]) if raw["capital_reinvested"] else None,
-            "synced_at":       raw["capital_synced_at"],
+            "net_deposits":        net,
+            "holdings_cost":       float(raw["capital_holdings_cost"]) if raw["capital_holdings_cost"] else None,
+            "reinvested":          reinvested,
+            "synced_at":           raw["capital_synced_at"],
+            "transaction_count":   tx_count,
         }
 
     def save_capital_metrics(self, metrics: dict) -> None:
@@ -541,6 +556,8 @@ class Database:
             val = metrics.get(field)
             if val is not None:
                 self.set_setting(key, str(round(float(val), 2)))
+        if metrics.get("transaction_count") is not None:
+            self.set_setting("capital_transaction_count", str(int(metrics["transaction_count"])))
         self.set_setting("capital_synced_at", _now())
 
     def get_all_handoff_notes(self) -> dict:

@@ -1,45 +1,59 @@
 {% if pies %}
 <div class="pies-section">
-  <div class="pies-heading">Portfolio Investments (Pies)</div>
+  <div class="pies-heading">Pies</div>
   {% for pie in pies %}
-  <details class="pie-block" open>
-    <summary>
-      <span class="pie-name">{% if pie.icon %}{{ pie.icon }} {% endif %}{{ pie.name }}</span>
-      {% if pie.analysis and pie.analysis.recommendation %}
-      <span class="badge badge-{{ pie.analysis.recommendation }}">{{ pie.analysis.recommendation | replace('_', ' ') }}</span>
-      {% endif %}
-      <span class="pie-meta">
-        <span>{{ pie.member_cards|length }} stocks</span>
-        {% if pie.current_value %}<span>£{{ '%.0f'|format(pie.current_value) }}</span>{% endif %}
+  {% set pie_rec = (pie.analysis.recommendation if pie.analysis else None) or 'HOLD' %}
+  {% set pie_val = pie.current_value or 0 %}
+  {% set pie_inv = pie.invested_value or 0 %}
+  {% set pie_pnl = (pie_val - pie_inv) if (pie_val and pie_inv) else 0 %}
+  {% set pie_pnl_pct = (pie_pnl / pie_inv * 100) if pie_inv else 0 %}
+  <details class="pie-t212">
+    <summary class="pie-t212-head">
+      <span class="pie-t212-icon" aria-hidden="true">{{ pie.icon or '🥧' }}</span>
+      <span class="pie-t212-main">
+        <span class="pie-t212-name">{{ pie.name }}</span>
+        <span class="pie-t212-sub">{{ pie.member_cards|length }} stocks{% if pie.reinvested %} · £{{ '%.0f'|format(pie.reinvested) }} reinvested{% endif %}</span>
       </span>
+      <span class="pie-t212-stats">
+        {% if pie_val %}<span class="pie-t212-value">£{{ '%.0f'|format(pie_val) if pie_val >= 10 else '%.2f'|format(pie_val) }}</span>{% endif %}
+        {% if pie_inv %}
+        <span class="pie-t212-pnl {{ 'pos' if pie_pnl >= 0 else 'neg' }}">{{ '%+.1f'|format(pie_pnl_pct) }}%</span>
+        {% endif %}
+      </span>
+      {% if pie.analysis and pie.analysis.recommendation %}
+      <span class="badge badge-{{ pie_rec }} pie-t212-badge">{{ pie_rec | replace('_', ' ') }}</span>
+      {% endif %}
+      <span class="pie-t212-chevron" aria-hidden="true">›</span>
     </summary>
-    <div class="pie-body">
+    <div class="pie-t212-body">
       {% if pie.analysis and pie.analysis.reasoning %}
-      <div class="pie-combined">
-        <strong>Combined analysis</strong>
+      <div class="pie-t212-analysis">
+        <div class="pie-t212-analysis-label">Combined pie view</div>
         <div class="reasoning">{{ pie.analysis.reasoning }}</div>
       </div>
       {% else %}
-      <p class="pie-combined" style="margin:0;color:var(--muted)">Run Analysis for a combined pie recommendation.</p>
+      <p class="pie-t212-analysis empty">Run Analysis for a combined recommendation for this pie.</p>
       {% endif %}
-      <div class="pie-members-label">Stocks in this pie</div>
-      <div class="pie-members-grid">
+
+      <div class="pie-t212-holdings-label">Holdings</div>
+      <div class="pie-t212-holdings">
         {% for card in pie.member_cards %}
         {% set mc_ticker = card.ticker %}
+        {% set mc_price = card.current_price or 0 %}
+        {% set mc_cost = card.cost_basis or 0 %}
+        {% set mc_shares = card.shares or 0 %}
         {% set mc_rec = card.recommendation or 'HOLD' %}
-        <div class="stock-card compact rec-{{ mc_rec }}" data-ticker="{{ mc_ticker }}" onclick="openStockModal('{{ mc_ticker }}')">
-          <div class="card-header">
-            <div class="card-identity">
-              <div class="card-name">{{ mc_ticker }}</div>
-            </div>
-            <span class="badge badge-{{ mc_rec }}">{{ (card.recommendation or '—') | replace('_', ' ') }}</span>
-          </div>
-          <div class="holdings-strip">
-            <div class="h-stat"><span class="h-lbl">Shares</span><span class="h-val">{{ '%g'|format(card.shares) if card.shares else '—' }}</span></div>
-            <div class="h-stat"><span class="h-lbl">Rec</span><span class="h-val">{{ card.recommendation or '—' }}</span></div>
-          </div>
+        {% set mc_pnl_pct = ((mc_price - mc_cost) / mc_cost * 100) if (mc_price and mc_cost) else 0 %}
+        <div class="pie-holding-row" data-ticker="{{ mc_ticker }}" onclick="openStockModal('{{ mc_ticker }}')">
+          <span class="pie-holding-ticker">{{ mc_ticker }}</span>
+          <span class="pie-holding-meta">{{ '%g'|format(mc_shares) }} shares</span>
+          <span class="pie-holding-pnl {{ 'pos' if mc_pnl_pct >= 0 else 'neg' }}">{{ '%+.1f'|format(mc_pnl_pct) if mc_cost else '—' }}%</span>
+          <span class="badge badge-{{ mc_rec }} pie-holding-rec">{{ mc_rec | replace('_', ' ') }}</span>
         </div>
         {% endfor %}
+        {% if not pie.member_cards %}
+        <p class="pie-t212-analysis empty">No open positions in this pie.</p>
+        {% endif %}
       </div>
     </div>
   </details>
@@ -47,5 +61,5 @@
 </div>
 {% endif %}
 {% if cards %}
-<div class="standalone-heading">Individual holdings (not in a pie)</div>
+<div class="standalone-heading">Stocks outside pies</div>
 {% endif %}
