@@ -33,6 +33,7 @@ def sync_page():
     key_warnings = _build_key_warnings(key_ages)
     with _sync_lock:
         sync_running = _sync_state["running"]
+    now_utc = datetime.now(timezone.utc).isoformat()
     return render_template(
         "sync.html",
         trades=trades,
@@ -40,6 +41,7 @@ def sync_page():
         last_sync_display=format_datetime(last_sync),
         last_backup_display=format_datetime(last_backup),
         display_timezone=display_timezone_name(),
+        now_display=format_datetime(now_utc),
         capital=capital,
         t212_available=t212.is_available(),
         sync_running=sync_running,
