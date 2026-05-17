@@ -523,6 +523,9 @@ class Database:
             "capital_reinvested",
             "capital_synced_at",
             "capital_transaction_count",
+            "capital_account_total_value",
+            "capital_cash_available",
+            "capital_net_deposits_estimated",
         )
         raw = {k: self.get_setting(k) for k in keys}
         tx_count = int(raw["capital_transaction_count"] or 0)
@@ -542,6 +545,14 @@ class Database:
         if last_error == "":
             last_error = None
 
+        account_total = None
+        if raw["capital_account_total_value"]:
+            account_total = float(raw["capital_account_total_value"])
+
+        cash_available = None
+        if raw["capital_cash_available"]:
+            cash_available = float(raw["capital_cash_available"])
+
         return {
             "net_deposits":        net,
             "holdings_cost":       float(raw["capital_holdings_cost"]) if raw["capital_holdings_cost"] else None,
@@ -549,13 +560,18 @@ class Database:
             "synced_at":           raw["capital_synced_at"],
             "transaction_count":   tx_count,
             "last_error":          last_error,
+            "account_total_value": account_total,
+            "cash_available":      cash_available,
+            "net_deposits_estimated": raw.get("capital_net_deposits_estimated") == "1",
         }
 
     def save_capital_metrics(self, metrics: dict) -> None:
         mapping = {
-            "net_deposits":  "capital_net_deposits",
-            "holdings_cost": "capital_holdings_cost",
-            "reinvested":    "capital_reinvested",
+            "net_deposits":         "capital_net_deposits",
+            "holdings_cost":        "capital_holdings_cost",
+            "reinvested":           "capital_reinvested",
+            "account_total_value":  "capital_account_total_value",
+            "cash_available":       "capital_cash_available",
         }
         for field, key in mapping.items():
             val = metrics.get(field)
@@ -563,6 +579,11 @@ class Database:
                 self.set_setting(key, str(round(float(val), 2)))
         if metrics.get("transaction_count") is not None:
             self.set_setting("capital_transaction_count", str(int(metrics["transaction_count"])))
+        if "net_deposits_estimated" in metrics:
+            self.set_setting(
+                "capital_net_deposits_estimated",
+                "1" if metrics["net_deposits_estimated"] else "0",
+            )
         self.set_setting("capital_synced_at", _now())
 
     def get_all_handoff_notes(self) -> dict:

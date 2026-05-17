@@ -27,11 +27,29 @@ def apply_net_deposit(db, amount: float, *, source: str = "manual") -> dict:
         "holdings_cost": round(float(cost), 2) if cost else None,
         "reinvested": reinvested,
     }
+    out["net_deposits_estimated"] = False
     db.save_capital_metrics(out)
     if source == "manual":
         db.set_setting("capital_last_error", "")
     logger.info("Net deposit set (%s): £%.2f", source, amount)
     return db.get_capital_metrics()
+
+
+def estimate_net_deposit_from_summary(summary: dict) -> Optional[float]:
+    """
+    Fallback when transaction history is unavailable.
+    T212 app: account value ≈ net deposit + (realised + unrealised P&L).
+    """
+    if not summary:
+        return None
+    total = summary.get("total_value")
+    if total is None:
+        return None
+    total_return = float(summary.get("unrealized_pnl") or 0) + float(
+        summary.get("realized_pnl") or 0
+    )
+    est = round(float(total) - total_return, 2)
+    return est if est > 0 else None
 
 
 def net_deposits_from_transactions(transactions: list[dict]) -> float:
@@ -100,13 +118,22 @@ def sync_capital_from_t212(t212, db, holdings_cost: float) -> dict:
             "Net deposit unavailable — T212 API key needs the "
             "history:transactions permission (see T212 → Settings → API)"
         )
-    except Exception:
-        tx_error = "transactions_fetch_failed"
-        logger.warning("Could not fetch T212 transactions for capital metrics")
+    except Exception as exc:
+        tx_error = f"transactions_fetch_failed:{type(exc).__name__}"
+        logger.warning("Could not fetch T212 transactions for capital metrics: %s", exc)
+
+    summary_fields: dict = {}
+    if summary:
+        summary_fields = {
+            "account_total_value": round(float(summary["total_value"]), 2),
+            "cash_available":      round(float(summary.get("cash_available") or 0), 2),
+        }
 
     if transactions:
         metrics = compute_capital_metrics(transactions, holdings_cost, summary)
         metrics["transaction_count"] = len(transactions)
+        metrics["net_deposits_estimated"] = False
+        metrics.update(summary_fields)
         dep = sum(1 for t in transactions if (t.get("type") or "").upper() == "DEPOSIT")
         logger.info(
             "Transactions: %d total, %d deposits → net deposit £%.2f",
@@ -129,6 +156,27 @@ def sync_capital_from_t212(t212, db, holdings_cost: float) -> dict:
         }
         if metrics["net_deposits"] is not None:
             metrics["reinvested"] = max(0.0, round(metrics["holdings_cost"] - metrics["net_deposits"], 2))
+        metrics.update(summary_fields)
+
+        # Fallback: derive net deposit from account summary (matches T212 home screen math)
+        if (
+            metrics.get("net_deposits") is None
+            and not override
+            and not (db.get_setting(MANUAL_NET_DEPOSIT_KEY) or "").strip()
+            and summary
+        ):
+            est = estimate_net_deposit_from_summary(summary)
+            if est is not None:
+                metrics["net_deposits"] = est
+                metrics["net_deposits_estimated"] = True
+                metrics["reinvested"] = max(
+                    0.0, round(metrics["holdings_cost"] - est, 2)
+                )
+                logger.info(
+                    "Estimated net deposit £%.2f from account summary "
+                    "(totalValue − realised − unrealised); sync transactions for exact figure",
+                    est,
+                )
 
     manual = (db.get_setting(MANUAL_NET_DEPOSIT_KEY) or "").strip()
     if manual and not override:
@@ -149,6 +197,7 @@ def sync_capital_from_t212(t212, db, holdings_cost: float) -> dict:
     if override:
         try:
             metrics["net_deposits"] = round(float(override), 2)
+            metrics["net_deposits_estimated"] = False
             metrics["reinvested"] = max(
                 0.0,
                 round(metrics["holdings_cost"] - metrics["net_deposits"], 2),
@@ -156,6 +205,9 @@ def sync_capital_from_t212(t212, db, holdings_cost: float) -> dict:
             logger.info("Using NET_DEPOSITS_OVERRIDE=£%.2f", metrics["net_deposits"])
         except ValueError:
             logger.warning("Invalid NET_DEPOSITS_OVERRIDE: %r", override)
+
+    if manual and not override:
+        metrics["net_deposits_estimated"] = False
 
     if tx_error:
         db.set_setting("capital_last_error", tx_error)

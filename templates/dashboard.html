@@ -730,7 +730,8 @@
 <div class="summary-strip">
   <div class="s-card">
     <div class="s-label">Portfolio Value</div>
-    <div class="s-value" id="s-value">—</div>
+    <div class="s-value" id="s-value">{% if summary.total_value %}£{{ '{:,.2f}'.format(summary.total_value) }}{% else %}—{% endif %}</div>
+    <div class="s-sub" id="s-value-sub">{% if summary.value_source == 't212' %}T212 account value{% if summary.cash_available %} · £{{ '{:,.2f}'.format(summary.cash_available) }} cash{% endif %}{% else %}Sync T212 for account total{% endif %}</div>
   </div>
   <div class="s-card clickable" onclick="openCapitalModal('net-deposit')" title="Deposits minus withdrawals">
     <div class="s-label">Net deposit</div>
@@ -739,7 +740,9 @@
       {% if capital.last_error == 'missing_transactions_scope' %}
       Enable <code>history:transactions</code> on API key
       {% elif capital.net_deposits is none %}
-      <a href="/sync" style="color:var(--buy)">Set on Sync page</a> or enable <code>history:transactions</code>
+      <a href="/sync" style="color:var(--buy)">Set on Sync page</a> or sync T212
+      {% elif capital.net_deposits_estimated %}
+      Estimated from T212 · sync for exact
       {% elif capital.reinvested is not none and capital.reinvested > 0 %}
       £{{ '{:,.2f}'.format(capital.reinvested) }} from dividends &amp; gains
       {% else %}
@@ -959,11 +962,25 @@
       const d = await r.json();
       const s = d.summary;
       document.getElementById('s-value').textContent = '£' + fmt(s.total_value);
+      const valSub = document.getElementById('s-value-sub');
+      if (valSub) {
+        if (s.value_source === 't212') {
+          let t = 'T212 account value';
+          if (s.cash_available != null) t += ' · £' + fmt(s.cash_available) + ' cash';
+          valSub.textContent = t;
+        } else {
+          valSub.textContent = 'Sync T212 for account total';
+        }
+      }
       const netEl = document.getElementById('s-net-deposit');
       const netSub = document.getElementById('s-net-deposit-sub');
       if (s.net_deposits != null && s.net_deposits_known !== false) {
         netEl.textContent = '£' + fmt(s.net_deposits);
-        if (netSub && s.reinvested > 0) netSub.textContent = '£' + fmt(s.reinvested) + ' from dividends & gains';
+        if (netSub && s.net_deposits_estimated) {
+          netSub.textContent = 'Estimated from T212 · sync for exact';
+        } else if (netSub && s.reinvested > 0) {
+          netSub.textContent = '£' + fmt(s.reinvested) + ' from dividends & gains';
+        }
       } else if (netEl) {
         netEl.textContent = '—';
         if (netSub && s.capital_error === 'missing_transactions_scope') {

@@ -19,6 +19,7 @@ def index():
         "dashboard.html",
         cards=view["cards"],
         pies=view["pies"],
+        summary=view["summary"],
         capital=view["capital"],
         handoff_notes=view["handoff_notes"],
         analyzer_status=current_app.extensions["analyzer"].status,

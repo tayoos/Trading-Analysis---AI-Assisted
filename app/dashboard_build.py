@@ -64,7 +64,7 @@ def build_dashboard_view(
     pos_map = {p["ticker"]: p for p in positions}
 
     total_cost = sum(p["shares"] * p["avg_cost"] for p in positions)
-    total_value = 0.0
+    positions_market_value = 0.0
     for p in positions:
         ticker = p["ticker"]
         price = (
@@ -72,7 +72,7 @@ def build_dashboard_view(
             or (analysis_map.get(ticker) or {}).get("current_price")
             or p["avg_cost"]
         )
-        total_value += price * p["shares"]
+        positions_market_value += price * p["shares"]
 
     capital = db.get_capital_metrics()
     if capital.get("holdings_cost") is None and total_cost:
@@ -121,17 +121,41 @@ def build_dashboard_view(
         if t not in pie_tickers
     ]
 
+    account_total = capital.get("account_total_value")
+    if account_total:
+        total_value = float(account_total)
+        value_source = "t212"
+    else:
+        total_value = positions_market_value
+        value_source = "market"
+
+    net = capital.get("net_deposits")
+    if net is not None and account_total:
+        total_pnl = round(float(account_total) - float(net), 2)
+        total_pnl_pct = round(total_pnl / float(net) * 100, 2) if net else 0
+    else:
+        total_pnl = round(positions_market_value - total_cost, 2)
+        total_pnl_pct = (
+            round((positions_market_value - total_cost) / total_cost * 100, 2)
+            if total_cost
+            else 0
+        )
+
     summary = {
-        "total_value":       round(total_value, 2),
-        "total_cost":        round(total_cost, 2),
-        "total_pnl":         round(total_value - total_cost, 2),
-        "total_pnl_pct":     round((total_value - total_cost) / total_cost * 100, 2) if total_cost else 0,
+        "total_value":            round(total_value, 2),
+        "value_source":           value_source,
+        "positions_market_value": round(positions_market_value, 2),
+        "cash_available":         capital.get("cash_available"),
+        "total_cost":             round(total_cost, 2),
+        "total_pnl":              total_pnl,
+        "total_pnl_pct":          total_pnl_pct,
         "position_count":    len(positions),
         "prices_stale":      price_data["stale"],
         "prices_fetched_at": price_data["fetched_at"],
         "dividends":         db.get_dividend_stats(),
-        "net_deposits":       capital.get("net_deposits"),
-        "reinvested":         capital.get("reinvested"),
+        "net_deposits":           capital.get("net_deposits"),
+        "net_deposits_estimated": capital.get("net_deposits_estimated"),
+        "reinvested":             capital.get("reinvested"),
         "holdings_cost":      capital.get("holdings_cost") or round(total_cost, 2),
         "capital_synced_at":  capital.get("synced_at"),
         "net_deposits_known": capital.get("net_deposits") is not None,
