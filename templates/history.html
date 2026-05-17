@@ -29,15 +29,8 @@
     margin-bottom: -1px;
   }
 
-  .tab-btn:hover:not(:disabled) {
-    color: var(--text);
-    opacity: 1;
-  }
-
-  .tab-btn.active {
-    color: var(--text);
-    border-bottom-color: var(--buy);
-  }
+  .tab-btn:hover:not(:disabled) { color: var(--text); opacity: 1; }
+  .tab-btn.active { color: var(--text); border-bottom-color: var(--buy); }
 
   .tab-content { display: none; }
   .tab-content.active { display: block; }
@@ -71,16 +64,10 @@
 
   .data-tbl tbody tr:hover td { background: var(--surface2); }
 
-  .view-link {
-    font-size: 12px;
-    font-weight: 600;
-    color: var(--buy);
-  }
-
+  .view-link { font-size: 12px; font-weight: 600; color: var(--buy); }
   .trade-buy  { color: var(--pos); font-weight: 600; }
   .trade-sell { color: var(--neg); font-weight: 600; }
 
-  /* ── Section heading row ─────────────────────────────────────────────── */
   .section-heading {
     font-size: 11px;
     font-weight: 700;
@@ -91,6 +78,26 @@
   }
 
   .section-heading:first-child { margin-top: 0; }
+
+  /* ── Loading placeholder ─────────────────────────────────────────────── */
+  .tab-loading {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 40px 0;
+    color: var(--muted);
+    font-size: 13px;
+  }
+
+  /* ── Empty state ─────────────────────────────────────────────────────── */
+  .empty {
+    text-align: center;
+    padding: 60px 24px;
+    color: var(--muted);
+    font-size: 13px;
+  }
+
+  .empty h3 { font-size: 16px; color: var(--text); margin-bottom: 8px; }
 
   /* ── Modal ───────────────────────────────────────────────────────────── */
   #modal {
@@ -153,12 +160,7 @@
     color: var(--muted);
   }
 
-  #modal-body td {
-    padding: 9px 10px;
-    border-top: 1px solid var(--border);
-    font-size: 13px;
-  }
-
+  #modal-body td { padding: 9px 10px; border-top: 1px solid var(--border); font-size: 13px; }
   #modal-body tbody tr:hover td { background: var(--surface2); }
 
   #modal-body pre {
@@ -174,37 +176,19 @@
     line-height: 1.6;
     white-space: pre-wrap;
   }
-
-  /* ── Empty state ─────────────────────────────────────────────────────── */
-  .empty {
-    text-align: center;
-    padding: 60px 24px;
-    color: var(--muted);
-    font-size: 13px;
-  }
-
-  .empty h3 {
-    font-size: 16px;
-    color: var(--text);
-    margin-bottom: 8px;
-  }
 </style>
 {% endblock %}
 
 {% block content %}
 <div class="tab-bar">
   <button class="tab-btn active" onclick="switchTab('runs', this)">Analysis Runs</button>
-  <button class="tab-btn" onclick="switchTab('trades', this)">
-    Trades {% if trades %}<span style="color:var(--muted);font-weight:400">({{ trades|length }})</span>{% endif %}
-  </button>
-  <button class="tab-btn" onclick="switchTab('dividends', this)">
-    Dividends {% if dividends %}<span style="color:var(--muted);font-weight:400">({{ dividends|length }})</span>{% endif %}
-  </button>
+  <button class="tab-btn" onclick="switchTab('trades', this)">Trades</button>
+  <button class="tab-btn" onclick="switchTab('dividends', this)">Dividends</button>
 </div>
 
 <div class="page">
 
-  <!-- ── Analysis Runs tab ─────────────────────────────────────────────── -->
+  <!-- ── Analysis Runs ─────────────────────────────────────────────────── -->
   <div id="tab-runs" class="tab-content active">
     {% if runs %}
     <table class="data-tbl">
@@ -239,126 +223,20 @@
     {% endif %}
   </div>
 
-  <!-- ── Trades tab ──────────────────────────────────────────────────────── -->
+  <!-- ── Trades (lazy) ─────────────────────────────────────────────────── -->
   <div id="tab-trades" class="tab-content">
-
-    {% if owned_history %}
-    <div class="section-heading">Closed Positions</div>
-    <table class="data-tbl" style="margin-bottom:24px">
-      <thead>
-        <tr>
-          <th>Ticker</th>
-          <th>First Bought</th>
-          <th>Sold</th>
-          <th>Avg Cost</th>
-          <th>Realised P&amp;L</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for o in owned_history %}
-        <tr>
-          <td><a href="/ticker/{{ o.ticker }}">{{ o.ticker }}</a></td>
-          <td>{{ (o.first_bought or '')[:10] }}</td>
-          <td>{{ (o.fully_sold_at or '')[:10] }}</td>
-          <td>{{ '%.4f'|format(o.avg_cost) if o.avg_cost else '—' }}</td>
-          <td class="{{ 'pos' if (o.realised_pl or 0) >= 0 else 'neg' }}">
-            {{ ('%+.2f'|format(o.realised_pl)) if o.realised_pl is not none else '—' }}
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-    {% endif %}
-
-    {% if trades %}
-    <div class="section-heading">All Trades (most recent first)</div>
-    <table class="data-tbl">
-      <thead>
-        <tr>
-          <th>Date</th>
-          <th>Ticker</th>
-          <th>Action</th>
-          <th>Qty</th>
-          <th>Price</th>
-          <th>Total</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for t in trades %}
-        <tr>
-          <td>{{ (t.traded_at or '')[:10] }}</td>
-          <td><a href="/ticker/{{ t.ticker }}">{{ t.ticker }}</a></td>
-          <td class="{{ 'trade-buy' if t.action == 'BUY' else 'trade-sell' }}">{{ t.action }}</td>
-          <td>{{ t.quantity }}</td>
-          <td>{{ '%.4f'|format(t.price) }}</td>
-          <td>{{ '%.2f'|format(t.total_value) }}</td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-    {% else %}
-    <div class="empty">
-      <h3>No trades imported yet</h3>
-      <p>Go to Sync and click "Sync Trading 212" to import your trade history.</p>
+    <div class="tab-loading" id="trades-loading">
+      <div class="spinner"></div> Loading trades…
     </div>
-    {% endif %}
+    <div id="trades-content" style="display:none"></div>
   </div>
 
-  <!-- ── Dividends tab ───────────────────────────────────────────────────── -->
+  <!-- ── Dividends (lazy) ──────────────────────────────────────────────── -->
   <div id="tab-dividends" class="tab-content">
-
-    {% if dividend_summary %}
-    <div class="section-heading">All-Time Summary by Ticker</div>
-    <table class="data-tbl" style="margin-bottom:24px">
-      <thead>
-        <tr>
-          <th>Ticker</th>
-          <th>Total Received</th>
-          <th>Payments</th>
-          <th>Last Paid</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for d in dividend_summary %}
-        <tr>
-          <td><a href="/ticker/{{ d.ticker }}">{{ d.ticker }}</a></td>
-          <td class="pos">£{{ '%.2f'|format(d.total_received) }}</td>
-          <td>{{ d.payment_count }}</td>
-          <td>{{ (d.last_paid or '')[:10] }}</td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-    {% endif %}
-
-    {% if dividends %}
-    <div class="section-heading">Individual Payments</div>
-    <table class="data-tbl">
-      <thead>
-        <tr>
-          <th>Date</th>
-          <th>Ticker</th>
-          <th>Amount</th>
-          <th>Shares held</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for d in dividends %}
-        <tr>
-          <td>{{ (d.paid_at or '')[:10] }}</td>
-          <td><a href="/ticker/{{ d.ticker }}">{{ d.ticker }}</a></td>
-          <td class="pos">£{{ '%.4f'|format(d.amount) }}</td>
-          <td>{{ d.shares_held or '—' }}</td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-    {% else %}
-    <div class="empty">
-      <h3>No dividends recorded yet</h3>
-      <p>Dividends are imported automatically when you sync Trading 212.</p>
+    <div class="tab-loading" id="dividends-loading">
+      <div class="spinner"></div> Loading dividends…
     </div>
-    {% endif %}
+    <div id="dividends-content" style="display:none"></div>
   </div>
 
 </div>
@@ -375,11 +253,123 @@
 </div>
 
 <script>
+const loaded = { trades: false, dividends: false };
+
 function switchTab(name, btn) {
   document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
   document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
   document.getElementById('tab-' + name).classList.add('active');
   btn.classList.add('active');
+  if (name === 'trades' && !loaded.trades) loadTrades();
+  if (name === 'dividends' && !loaded.dividends) loadDividends();
+}
+
+async function loadTrades() {
+  try {
+    const r = await fetch('/api/trades');
+    const d = await r.json();
+    const el = document.getElementById('trades-content');
+    document.getElementById('trades-loading').style.display = 'none';
+
+    let html = '';
+
+    if (d.owned_history && d.owned_history.length) {
+      html += '<div class="section-heading">Closed Positions</div>';
+      html += '<table class="data-tbl" style="margin-bottom:24px"><thead><tr>'
+        + '<th>Ticker</th><th>First Bought</th><th>Sold</th><th>Avg Cost</th><th>Realised P&L</th>'
+        + '</tr></thead><tbody>';
+      for (const o of d.owned_history) {
+        const pl = o.realised_pl != null ? (o.realised_pl >= 0 ? '+' : '') + o.realised_pl.toFixed(2) : '—';
+        const plClass = o.realised_pl != null ? (o.realised_pl >= 0 ? 'pos' : 'neg') : '';
+        html += `<tr>
+          <td><a href="/ticker/${o.ticker}">${o.ticker}</a></td>
+          <td>${(o.first_bought||'').slice(0,10)}</td>
+          <td>${(o.fully_sold_at||'').slice(0,10)}</td>
+          <td>${o.avg_cost != null ? o.avg_cost.toFixed(4) : '—'}</td>
+          <td class="${plClass}">${pl}</td>
+        </tr>`;
+      }
+      html += '</tbody></table>';
+    }
+
+    if (d.trades && d.trades.length) {
+      html += '<div class="section-heading">All Trades — most recent first</div>';
+      html += '<table class="data-tbl"><thead><tr>'
+        + '<th>Date</th><th>Ticker</th><th>Action</th><th>Qty</th><th>Price</th><th>Total</th>'
+        + '</tr></thead><tbody>';
+      for (const t of d.trades) {
+        const cls = t.action === 'BUY' ? 'trade-buy' : 'trade-sell';
+        html += `<tr>
+          <td>${(t.traded_at||'').slice(0,10)}</td>
+          <td><a href="/ticker/${t.ticker}">${t.ticker}</a></td>
+          <td class="${cls}">${t.action}</td>
+          <td>${t.quantity}</td>
+          <td>${t.price.toFixed(4)}</td>
+          <td>${t.total_value.toFixed(2)}</td>
+        </tr>`;
+      }
+      html += '</tbody></table>';
+    } else {
+      html = '<div class="empty"><h3>No trades imported yet</h3><p>Go to Sync and click "Sync Now" to import your trade history.</p></div>';
+    }
+
+    el.innerHTML = html;
+    el.style.display = 'block';
+    loaded.trades = true;
+  } catch(e) {
+    document.getElementById('trades-loading').innerHTML = '<span style="color:var(--neg)">Failed to load trades.</span>';
+  }
+}
+
+async function loadDividends() {
+  try {
+    const r = await fetch('/api/dividends-history');
+    const d = await r.json();
+    const el = document.getElementById('dividends-content');
+    document.getElementById('dividends-loading').style.display = 'none';
+
+    let html = '';
+
+    if (d.summary && d.summary.length) {
+      html += '<div class="section-heading">All-Time Summary by Ticker</div>';
+      html += '<table class="data-tbl" style="margin-bottom:24px"><thead><tr>'
+        + '<th>Ticker</th><th>Total Received</th><th>Payments</th><th>Last Paid</th>'
+        + '</tr></thead><tbody>';
+      for (const s of d.summary) {
+        html += `<tr>
+          <td><a href="/ticker/${s.ticker}">${s.ticker}</a></td>
+          <td class="pos">£${s.total_received.toFixed(2)}</td>
+          <td>${s.payment_count}</td>
+          <td>${(s.last_paid||'').slice(0,10)}</td>
+        </tr>`;
+      }
+      html += '</tbody></table>';
+    }
+
+    if (d.dividends && d.dividends.length) {
+      html += '<div class="section-heading">Individual Payments</div>';
+      html += '<table class="data-tbl"><thead><tr>'
+        + '<th>Date</th><th>Ticker</th><th>Amount</th><th>Shares held</th>'
+        + '</tr></thead><tbody>';
+      for (const dv of d.dividends) {
+        html += `<tr>
+          <td>${(dv.paid_at||'').slice(0,10)}</td>
+          <td><a href="/ticker/${dv.ticker}">${dv.ticker}</a></td>
+          <td class="pos">£${dv.amount.toFixed(4)}</td>
+          <td>${dv.shares_held || '—'}</td>
+        </tr>`;
+      }
+      html += '</tbody></table>';
+    } else {
+      html = '<div class="empty"><h3>No dividends recorded yet</h3><p>Dividends are imported automatically when you sync Trading 212.</p></div>';
+    }
+
+    el.innerHTML = html;
+    el.style.display = 'block';
+    loaded.dividends = true;
+  } catch(e) {
+    document.getElementById('dividends-loading').innerHTML = '<span style="color:var(--neg)">Failed to load dividends.</span>';
+  }
 }
 
 async function loadRun(id) {
@@ -406,9 +396,7 @@ async function loadRun(id) {
     </tr>`;
   }
   html += '</tbody></table>';
-  if (d.run.log) {
-    html += '<pre>' + d.run.log + '</pre>';
-  }
+  if (d.run.log) html += '<pre>' + d.run.log + '</pre>';
   document.getElementById('modal-body').innerHTML = html;
   document.getElementById('modal').style.display = 'block';
 }
@@ -418,7 +406,7 @@ function closeModal(e) {
     document.getElementById('modal').style.display = 'none';
 }
 
-// Restore last active tab from URL hash
+// Restore tab from URL hash
 if (location.hash === '#trades') switchTab('trades', document.querySelectorAll('.tab-btn')[1]);
 if (location.hash === '#dividends') switchTab('dividends', document.querySelectorAll('.tab-btn')[2]);
 </script>

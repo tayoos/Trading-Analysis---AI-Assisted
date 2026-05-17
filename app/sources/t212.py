@@ -135,13 +135,17 @@ class T212DataSource(DataSource):
 
     def _get(self, path: str, params: Optional[dict] = None) -> dict | list:
         url = f"{_BASE_URL}{path}"
-        for attempt in range(4):
+        for attempt in range(10):
             try:
                 resp = self._session.get(url, params=params, timeout=_TIMEOUT)
                 if resp.status_code == 429:
                     reset_ts = resp.headers.get("x-ratelimit-reset")
-                    wait = max(int(reset_ts) - int(time.time()) + 1, 10) if reset_ts else 60
-                    logger.warning("T212 rate limited on %s — waiting %ds (attempt %d/4)", path, wait, attempt + 1)
+                    if reset_ts:
+                        raw_wait = int(reset_ts) - int(time.time()) + 1
+                        wait = max(min(raw_wait, 20), 10)
+                    else:
+                        wait = 15
+                    logger.warning("T212 rate limited on %s — waiting %ds (attempt %d/10)", path, wait, attempt + 1)
                     time.sleep(wait)
                     continue
                 resp.raise_for_status()
@@ -152,7 +156,7 @@ class T212DataSource(DataSource):
             except requests.RequestException as exc:
                 logger.error("T212 request failed for %s: %s", path, exc)
                 raise
-        raise RuntimeError(f"T212 rate limit retries exhausted for {path}")
+        raise RuntimeError(f"T212 rate limit retries exhausted after 10 attempts for {path}")
 
     def _parse_order(self, item: dict) -> Optional[Trade]:
         ticker = self._normalise_ticker(item.get("ticker", ""))

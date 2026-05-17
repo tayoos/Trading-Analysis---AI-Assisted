@@ -17,11 +17,8 @@ def sync_page():
     t212    = current_app.extensions["t212"]
     backup  = current_app.extensions["backup"]
 
-    trades           = db.get_trades(limit=50)
-    owned            = db.get_owned_history()
-    dividends        = db.get_dividends(limit=50)
-    dividend_summary = db.get_dividend_summary()
-    last_sync        = db.get_last_sync_time()
+    trades    = db.get_trades(limit=50)
+    last_sync = db.get_last_sync_time()
     key_ages         = db.get_key_ages()
     backup_list      = backup.list_backups()
     last_backup      = backup.last_backup_time()
@@ -30,7 +27,6 @@ def sync_page():
     return render_template(
         "sync.html",
         trades=trades,
-        owned_history=owned,
         last_sync=last_sync,
         t212_available=t212.is_available(),
         key_ages=key_ages,
@@ -58,8 +54,9 @@ def sync_t212():
 
     def _do_sync():
         try:
-            last_sync = db.get_last_sync_time()
-            orders    = t212.get_orders(since=last_sync)
+            since = db.get_latest_trade_time()
+            logger.info("T212 sync starting — most recent trade: %s", since or "none (full history fetch)")
+            orders = t212.get_orders(since=since)
             portfolio.apply_trades(orders)
 
             last_div = _last_dividend_sync(db)
@@ -67,6 +64,9 @@ def sync_t212():
             if new_divs:
                 saved = db.save_dividends(new_divs)
                 logger.info("Saved %d new dividend payments", saved)
+
+            db.set_setting("t212_last_synced_at", datetime.now(timezone.utc).isoformat())
+            logger.info("T212 sync complete")
         except Exception:
             logger.exception("T212 sync failed")
 

@@ -347,12 +347,17 @@ class Database:
                 ).fetchall()
             return [dict(r) for r in rows]
 
-    def get_last_sync_time(self, source: str = "trading212") -> Optional[str]:
+    def get_last_sync_time(self) -> Optional[str]:
+        """Last time a T212 sync was run (for UI display)."""
+        return self.get_setting("t212_last_synced_at")
+
+    def get_latest_trade_time(self) -> Optional[str]:
+        """Most recent traded_at in the DB — used as since= cutoff for T212 API."""
         with self._conn() as conn:
             row = conn.execute(
-                "SELECT MAX(synced_at) as last FROM trades", ()
+                "SELECT MAX(traded_at) as last FROM trades"
             ).fetchone()
-            return row["last"] if row else None
+            return row["last"] if row and row["last"] else None
 
     # ── Owned history ──────────────────────────────────────────────────────────
 
