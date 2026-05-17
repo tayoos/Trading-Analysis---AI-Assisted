@@ -14,6 +14,7 @@ from .analyzer import StockAnalyzer
 from .backup import BackupManager
 from .database import Database
 from .portfolio import PortfolioManager
+from .prices import LivePriceCache
 from .ratelimit import setup_rate_limiting
 from .routes import analysis_bp, dashboard_bp, history_bp, sync_bp
 from .sources.t212 import T212DataSource
@@ -39,6 +40,7 @@ def create_app() -> Flask:
     t212 = T212DataSource()
     portfolio = PortfolioManager(db)
     analyzer = StockAnalyzer(db)
+    price_cache = LivePriceCache()
 
     backup = BackupManager(
         db_path=os.getenv("DB_PATH", "/data/db/stocks.db"),
@@ -52,6 +54,7 @@ def create_app() -> Flask:
     app.extensions["portfolio"] = portfolio
     app.extensions["analyzer"] = analyzer
     app.extensions["backup"] = backup
+    app.extensions["price_cache"] = price_cache
 
     # ── Auth + rate limiting ───────────────────────────────────────────────────
     trusted_networks = _parse_trusted_networks()
