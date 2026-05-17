@@ -7,7 +7,18 @@ bp = Blueprint("history", __name__)
 def history_page():
     db = current_app.extensions["db"]
     runs = db.list_runs(limit=50)
-    return render_template("history.html", runs=runs)
+    trades = db.get_trades(limit=500)
+    dividends = db.get_dividends(limit=500)
+    dividend_summary = db.get_dividend_summary()
+    owned_history = db.get_owned_history()
+    return render_template(
+        "history.html",
+        runs=runs,
+        trades=trades,
+        dividends=dividends,
+        dividend_summary=dividend_summary,
+        owned_history=owned_history,
+    )
 
 
 @bp.get("/api/history")

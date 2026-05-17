@@ -138,12 +138,50 @@ class StockAnalyzer:
 
     def _analyse_ticker(self, holding: dict) -> dict:
         ticker = holding["ticker"]
-        market_data = _fetch_market_data(ticker)
-        handoff_note = self.db.get_handoff_note(ticker)
-        prompt = _build_prompt(holding, market_data, handoff_note)
 
+        self._log(f"[{_ts()}] {ticker}: fetching market data from yfinance")
+        market_data = _fetch_market_data(ticker)
+
+        price = market_data.get("current_price")
+        pe = market_data.get("pe_ratio")
+        analyst_t = market_data.get("analyst_target_mean")
+        analyst_c = market_data.get("analyst_consensus", "")
+        earnings = market_data.get("next_earnings")
+        eps_g = market_data.get("eps_growth_pct")
+        self._log(
+            f"[{_ts()}] {ticker}: price={price}  P/E={pe}  "
+            f"analyst={analyst_t}({analyst_c})  "
+            f"EPS-growth={eps_g}%  earnings={earnings}"
+        )
+
+        handoff_note = self.db.get_handoff_note(ticker)
+        if handoff_note:
+            thesis = (handoff_note.get("thesis_summary") or "")[:80]
+            self._log(f"[{_ts()}] {ticker}: memory loaded — \"{thesis}\"")
+
+        self._log(f"[{_ts()}] {ticker}: sending to Claude AI for analysis…")
+        prompt = _build_prompt(holding, market_data, handoff_note)
         raw = _call_claude_sync(_SYSTEM_PROMPT + "\n\n" + prompt)
+        self._log(f"[{_ts()}] {ticker}: Claude response received ({len(raw)} chars)")
+
         result = json.loads(raw)
+        rec = result.get("recommendation", "?")
+        conf = result.get("confidence", "?")
+        target = result.get("price_target_30d")
+        sentiment = result.get("news_sentiment", "")
+        reasoning_preview = (result.get("reasoning") or "")[:100]
+        self._log(
+            f"[{_ts()}] {ticker}: → {rec} ({conf})  "
+            f"target={target}  sentiment={sentiment}"
+        )
+        self._log(f"[{_ts()}] {ticker}: \"{reasoning_preview}…\"")
+
+        cats = result.get("catalysts", [])
+        risks = result.get("risks", [])
+        if cats:
+            self._log(f"[{_ts()}] {ticker}: catalysts: {' | '.join(cats[:3])}")
+        if risks:
+            self._log(f"[{_ts()}] {ticker}: risks: {' | '.join(risks[:3])}")
 
         # Persist position + fundamental data alongside Claude's output
         result["current_price"]       = market_data.get("current_price")
@@ -162,6 +200,7 @@ class StockAnalyzer:
             new_rec = result.get("recommendation")
             if prev_rec and new_rec and prev_rec != new_rec:
                 flag = f"{prev_rec}→{new_rec}"
+                self._log(f"[{_ts()}] {ticker}: trend change detected — {flag}")
                 if "handoff_note" in result:
                     result["handoff_note"].setdefault("trend_flags", []).append(flag)
 

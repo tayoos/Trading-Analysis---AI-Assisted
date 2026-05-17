@@ -27,7 +27,7 @@ def create_app() -> Flask:
 
     # ── Core services ──────────────────────────────────────────────────────────
     db = Database(os.getenv("DB_PATH", "/data/db/stocks.db"))
-    t212 = T212DataSource()
+    t212 = T212DataSource()  # reads TRADING212_API_KEY from env
     portfolio = PortfolioManager(db)
     analyzer = StockAnalyzer(db)
 
