@@ -23,6 +23,10 @@ class Position:
     instrument_name: Optional[str] = None
     position_value: Optional[float] = None  # wallet currentValue (account currency)
     unrealized_pnl: Optional[float] = None
+    t212_raw_ticker: Optional[str] = None   # e.g. SOAC_US_EQ
+    isin: Optional[str] = None
+    instrument_currency: Optional[str] = None
+    market_ticker: Optional[str] = None     # yfinance symbol for quotes/analysis
 
 
 class DataSource(ABC):

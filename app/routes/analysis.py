@@ -69,8 +69,10 @@ def refresh_prices():
     if not tickers:
         return jsonify({"error": "No open positions to price"}), 400
 
-    # Run synchronously so the caller gets fresh prices back immediately
-    result = price_cache.refresh(tickers)
+    market_map = {
+        p["ticker"]: p.get("market_ticker") or p["ticker"] for p in positions
+    }
+    result = price_cache.refresh(tickers, market_map)
     return jsonify(result)
 
 
@@ -88,12 +90,15 @@ def sparkline(ticker: str):
         if cached and cached["expires_at"] > now:
             return jsonify(cached["data"])
 
-    # Fetch outside the lock so we don't block other requests
+    db = current_app.extensions["db"]
+    pos = next((p for p in db.get_positions() if p["ticker"] == ticker), None)
+    yf_symbol = (pos or {}).get("market_ticker") or ticker
+
     try:
+        from ..prices import _ticker_candidates
         import yfinance as yf
-        # Try base ticker first, then .L suffix for London-listed stocks
         closes = []
-        for candidate in ([ticker, f"{ticker}.L"] if "." not in ticker else [ticker]):
+        for candidate in _ticker_candidates(yf_symbol):
             hist = yf.Ticker(candidate).history(period="30d")
             if not hist.empty:
                 closes = [round(float(p), 4) for p in hist["Close"].tolist()]

@@ -172,6 +172,14 @@ class Database:
             conn.execute("ALTER TABLE positions ADD COLUMN position_value REAL")
         if "unrealized_pnl" not in cols:
             conn.execute("ALTER TABLE positions ADD COLUMN unrealized_pnl REAL")
+        if "t212_raw_ticker" not in cols:
+            conn.execute("ALTER TABLE positions ADD COLUMN t212_raw_ticker TEXT")
+        if "isin" not in cols:
+            conn.execute("ALTER TABLE positions ADD COLUMN isin TEXT")
+        if "instrument_currency" not in cols:
+            conn.execute("ALTER TABLE positions ADD COLUMN instrument_currency TEXT")
+        if "market_ticker" not in cols:
+            conn.execute("ALTER TABLE positions ADD COLUMN market_ticker TEXT")
 
     # ── Runs ───────────────────────────────────────────────────────────────────
 
@@ -348,24 +356,41 @@ class Database:
         instrument_name: Optional[str] = None,
         position_value: Optional[float] = None,
         unrealized_pnl: Optional[float] = None,
+        t212_raw_ticker: Optional[str] = None,
+        isin: Optional[str] = None,
+        instrument_currency: Optional[str] = None,
+        market_ticker: Optional[str] = None,
     ) -> None:
         with self._conn() as conn:
             conn.execute(
                 """INSERT INTO positions
                    (ticker, shares, avg_cost, source, first_bought, last_updated,
-                    current_price, instrument_name, position_value, unrealized_pnl)
-                   VALUES (?,?,?,?,?,?,?,?,?,?)
+                    current_price, instrument_name, position_value, unrealized_pnl,
+                    t212_raw_ticker, isin, instrument_currency, market_ticker)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                    ON CONFLICT(ticker) DO UPDATE SET
                      shares=excluded.shares, avg_cost=excluded.avg_cost,
                      source=excluded.source, last_updated=excluded.last_updated,
-                     current_price=excluded.current_price,
-                     instrument_name=excluded.instrument_name,
-                     position_value=excluded.position_value,
-                     unrealized_pnl=excluded.unrealized_pnl""",
+                     current_price=COALESCE(excluded.current_price, positions.current_price),
+                     instrument_name=COALESCE(excluded.instrument_name, positions.instrument_name),
+                     position_value=COALESCE(excluded.position_value, positions.position_value),
+                     unrealized_pnl=COALESCE(excluded.unrealized_pnl, positions.unrealized_pnl),
+                     t212_raw_ticker=COALESCE(excluded.t212_raw_ticker, positions.t212_raw_ticker),
+                     isin=COALESCE(excluded.isin, positions.isin),
+                     instrument_currency=COALESCE(excluded.instrument_currency, positions.instrument_currency),
+                     market_ticker=COALESCE(excluded.market_ticker, positions.market_ticker)""",
                 (
                     ticker, shares, avg_cost, source, first_bought, _now(),
                     current_price, instrument_name, position_value, unrealized_pnl,
+                    t212_raw_ticker, isin, instrument_currency, market_ticker,
                 ),
+            )
+
+    def update_position_market_ticker(self, ticker: str, market_ticker: str) -> None:
+        with self._conn() as conn:
+            conn.execute(
+                "UPDATE positions SET market_ticker=?, last_updated=? WHERE ticker=?",
+                (market_ticker, _now(), ticker),
             )
 
     def delete_position(self, ticker: str) -> None:

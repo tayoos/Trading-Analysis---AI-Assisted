@@ -272,9 +272,18 @@ def _reconcile_positions(t212, db) -> None:
         logger.info("T212 reconcile: no open positions reported by T212")
         return
 
+    from ..ticker_resolve import resolve_market_ticker
+
     live_tickers: set[str] = set()
     for pos in live:
         live_tickers.add(pos.ticker)
+        market_ticker = resolve_market_ticker(
+            pos.ticker,
+            isin=pos.isin,
+            instrument_name=pos.instrument_name,
+            reference_price=pos.current_price,
+            instrument_currency=pos.instrument_currency,
+        )
         db.upsert_position(
             ticker=pos.ticker,
             shares=pos.shares,
@@ -284,7 +293,18 @@ def _reconcile_positions(t212, db) -> None:
             instrument_name=pos.instrument_name,
             position_value=pos.position_value,
             unrealized_pnl=pos.unrealized_pnl,
+            t212_raw_ticker=pos.t212_raw_ticker,
+            isin=pos.isin,
+            instrument_currency=pos.instrument_currency,
+            market_ticker=market_ticker,
         )
+        if market_ticker != pos.ticker:
+            logger.info(
+                "T212 reconcile: %s (%s) → market ticker %s for quotes/analysis",
+                pos.instrument_name or pos.ticker,
+                pos.ticker,
+                market_ticker,
+            )
     removed = db.prune_positions_not_in(live_tickers, source="trading212")
     if removed:
         logger.info(
