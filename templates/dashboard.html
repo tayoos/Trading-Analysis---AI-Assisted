@@ -5,32 +5,30 @@
 {% block head %}
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
 <style>
-  /* ── Status banner ──────────────────────────────────────────────── */
+  /* ── Status banner ──────────────────────────────────────────────────── */
   #status-banner {
     display: none;
-    background: var(--surface2);
-    border-bottom: 1px solid var(--border);
+    background: rgba(33,150,243,.08);
+    border-bottom: 1px solid rgba(33,150,243,.2);
     padding: 10px 24px;
     font-size: 13px;
     gap: 10px;
     align-items: center;
   }
 
-  #status-banner.visible {
-    display: flex;
-  }
+  #status-banner.visible { display: flex; }
 
   #log-lines {
     font-family: monospace;
     font-size: 12px;
     color: var(--muted);
-    max-width: 700px;
+    flex: 1;
     overflow: hidden;
     white-space: nowrap;
     text-overflow: ellipsis;
   }
 
-  /* ── Key warnings bar ───────────────────────────────────────────── */
+  /* ── Key warnings ───────────────────────────────────────────────────── */
   .key-warn-bar {
     padding: 9px 24px;
     font-size: 12px;
@@ -40,143 +38,165 @@
     flex-wrap: wrap;
   }
 
-  .key-warn-bar.warn  { background: rgba(255,152,0,.12);  border-bottom: 1px solid rgba(255,152,0,.25); }
-  .key-warn-bar.alert { background: rgba(239,83,80,.12);  border-bottom: 1px solid rgba(239,83,80,.25); }
-  .key-warn-bar.info  { background: rgba(33,150,243,.08); border-bottom: 1px solid rgba(33,150,243,.18); }
-  .key-warn-bar .kw-icon { font-size: 14px; }
+  .key-warn-bar.warn  { background: rgba(255,152,0,.1);  border-bottom: 1px solid rgba(255,152,0,.2); }
+  .key-warn-bar.alert { background: rgba(239,83,80,.1);  border-bottom: 1px solid rgba(239,83,80,.2); }
+  .key-warn-bar.info  { background: rgba(33,150,243,.07); border-bottom: 1px solid rgba(33,150,243,.15); }
   .key-warn-bar a { font-size: 12px; }
 
-  /* ── Summary bar ────────────────────────────────────────────────── */
-  .summary-bar {
+  /* ── Summary strip ──────────────────────────────────────────────────── */
+  .summary-strip {
     display: flex;
-    gap: var(--gap);
-    padding: 20px 24px 0;
+    gap: 10px;
+    padding: 18px 24px 0;
     flex-wrap: wrap;
   }
 
-  .summary-card {
+  .s-card {
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: var(--radius);
-    padding: 14px 20px;
-    min-width: 148px;
+    padding: 14px 18px;
+    min-width: 130px;
     flex: 1;
   }
 
-  .summary-card .s-label {
+  .s-label {
     font-size: 10px;
     font-weight: 700;
-    color: var(--muted);
     text-transform: uppercase;
     letter-spacing: 0.6px;
-    margin-bottom: 6px;
+    color: var(--muted);
+    margin-bottom: 5px;
   }
 
-  .summary-card .s-value {
-    font-size: 22px;
+  .s-value {
+    font-size: 20px;
     font-weight: 700;
-    line-height: 1.1;
     color: var(--text);
+    line-height: 1.1;
   }
 
-  .summary-card .s-value.pos { color: var(--pos); }
-  .summary-card .s-value.neg { color: var(--neg); }
+  .s-value.pos { color: var(--pos); }
+  .s-value.neg { color: var(--neg); }
+  .s-value.div { color: #7c4dff; }
 
-  /* ── Controls row ───────────────────────────────────────────────── */
+  .s-sub {
+    font-size: 11px;
+    color: var(--muted);
+    margin-top: 3px;
+  }
+
+  /* ── Dividend strip ─────────────────────────────────────────────────── */
+  .div-strip {
+    display: flex;
+    gap: 10px;
+    padding: 10px 24px 0;
+    flex-wrap: wrap;
+  }
+
+  .div-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-left: 3px solid #7c4dff;
+    border-radius: var(--radius);
+    padding: 12px 16px;
+    min-width: 120px;
+    flex: 1;
+  }
+
+  .div-card .s-label { color: #9c6fff; }
+  .div-card .s-value { font-size: 18px; color: #b388ff; }
+
+  /* ── Controls ───────────────────────────────────────────────────────── */
   .controls-row {
     display: flex;
     align-items: center;
     gap: 10px;
-    padding: 16px 24px;
+    padding: 14px 24px;
   }
 
-  .controls-row .run-status {
-    margin-left: auto;
-    font-size: 12px;
-    color: var(--muted);
-  }
+  .run-status { margin-left: auto; font-size: 12px; color: var(--muted); }
 
-  /* ── Card grid ──────────────────────────────────────────────────── */
+  /* ── Card grid ──────────────────────────────────────────────────────── */
   .card-grid {
     display: grid;
-    gap: var(--gap);
+    gap: 12px;
     padding: 0 24px 24px;
-    grid-template-columns: repeat(auto-fill, minmax(390px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
   }
 
-  /* ── Stock card ─────────────────────────────────────────────────── */
+  /* ── Stock card ─────────────────────────────────────────────────────── */
   .stock-card {
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: var(--radius);
     overflow: hidden;
     cursor: pointer;
-    transition: border-color 0.2s, box-shadow 0.2s;
+    transition: border-color 0.18s, box-shadow 0.18s, transform 0.1s;
     display: flex;
     flex-direction: column;
   }
 
   .stock-card:hover {
-    border-color: var(--buy);
-    box-shadow: 0 4px 20px rgba(33,150,243,.08);
+    border-color: rgba(33,150,243,.5);
+    box-shadow: 0 6px 24px rgba(0,0,0,.25);
+    transform: translateY(-1px);
   }
 
-  /* left accent border by recommendation */
-  .stock-card.rec-BUY        { border-left: 4px solid var(--buy); }
-  .stock-card.rec-SELL       { border-left: 4px solid var(--sell); }
-  .stock-card.rec-HOLD_LONG  { border-left: 4px solid var(--hold-long); }
-  .stock-card.rec-HOLD_SHORT { border-left: 4px solid var(--hold-short); }
-  .stock-card.rec-HOLD       { border-left: 4px solid var(--hold); }
-  .stock-card.rec-WATCH      { border-left: 4px solid var(--watch); }
+  /* accent left border by recommendation */
+  .stock-card.rec-BUY        { border-left: 3px solid var(--buy); }
+  .stock-card.rec-SELL       { border-left: 3px solid var(--sell); }
+  .stock-card.rec-HOLD_LONG  { border-left: 3px solid var(--hold-long); }
+  .stock-card.rec-HOLD_SHORT { border-left: 3px solid var(--hold-short); }
+  .stock-card.rec-HOLD       { border-left: 3px solid var(--hold); }
+  .stock-card.rec-WATCH      { border-left: 3px solid var(--watch); }
 
-  /* card header */
+  /* ── Card header ────────────────────────────────────────────────────── */
   .card-header {
     display: flex;
     align-items: center;
     gap: 10px;
-    padding: 14px 16px 10px;
+    padding: 14px 16px 8px;
   }
 
   .card-ticker {
-    font-size: 19px;
+    font-size: 18px;
     font-weight: 700;
     flex: 1;
     letter-spacing: -0.3px;
   }
 
-  .card-confidence {
-    font-size: 11px;
+  .card-conf {
+    font-size: 10px;
+    font-weight: 600;
     color: var(--muted);
+    letter-spacing: 0.4px;
+    text-transform: uppercase;
   }
 
-  /* sparkline */
-  .sparkline-wrap {
+  /* ── Sparkline ──────────────────────────────────────────────────────── */
+  .spark-wrap {
     padding: 0 16px;
-    height: 56px;
-    position: relative;
+    height: 48px;
   }
 
-  .sparkline-wrap canvas {
-    display: block;
-  }
-
-  /* metrics row */
-  .metrics-row {
+  /* ── Metrics row ────────────────────────────────────────────────────── */
+  .metrics {
     display: flex;
+    align-items: stretch;
     gap: 0;
-    padding: 10px 16px 8px;
-    align-items: flex-end;
+    padding: 8px 16px 6px;
     flex-wrap: wrap;
     gap: 8px;
   }
 
-  .metric-chip {
+  .mc {
     display: flex;
     flex-direction: column;
-    gap: 2px;
+    gap: 1px;
   }
 
-  .metric-chip .mc-label {
+  .mc-lbl {
     font-size: 10px;
     font-weight: 600;
     color: var(--muted);
@@ -184,71 +204,62 @@
     letter-spacing: 0.4px;
   }
 
-  .metric-chip .mc-value {
-    font-size: 14px;
-    font-weight: 600;
-    color: var(--text);
-    line-height: 1;
-  }
-
-  .metric-chip.prominent .mc-value {
-    font-size: 19px;
+  .mc-val {
+    font-size: 15px;
     font-weight: 700;
+    color: var(--text);
+    line-height: 1.1;
   }
 
-  .metric-chip .mc-value.pos { color: var(--pos); }
-  .metric-chip .mc-value.neg { color: var(--neg); }
+  .mc-val.big { font-size: 20px; }
+  .mc-val.pos { color: var(--pos); }
+  .mc-val.neg { color: var(--neg); }
 
-  .metric-divider {
+  .vdiv {
     width: 1px;
-    height: 28px;
     background: var(--border);
-    align-self: center;
+    align-self: stretch;
+    margin: 0 4px;
   }
 
-  /* fundamentals strip */
+  /* ── Fund pills ─────────────────────────────────────────────────────── */
   .fund-strip {
     display: flex;
-    gap: 6px;
-    padding: 6px 16px;
+    gap: 5px;
+    padding: 4px 16px 6px;
     flex-wrap: wrap;
   }
 
-  .fund-pill {
+  .fp {
     background: var(--surface2);
     border: 1px solid var(--border);
     border-radius: 4px;
-    padding: 2px 8px;
+    padding: 2px 7px;
     font-size: 11px;
     color: var(--muted);
     white-space: nowrap;
   }
 
-  .fund-pill strong {
-    color: var(--text);
-  }
+  .fp strong { color: var(--text); font-weight: 600; }
 
-  /* card body */
-  .card-body {
-    padding: 10px 16px;
-    flex: 1;
-  }
+  /* ── Card body ──────────────────────────────────────────────────────── */
+  .card-body { padding: 8px 16px 10px; flex: 1; }
 
   .reasoning {
     font-size: 12px;
     line-height: 1.55;
     color: var(--muted);
-    margin-bottom: 10px;
+    margin-bottom: 8px;
     display: -webkit-box;
-    -webkit-line-clamp: 3;
+    -webkit-line-clamp: 2;
     -webkit-box-orient: vertical;
     overflow: hidden;
   }
 
   /* sentiment */
-  .sentiment-pill {
+  .sent-pill {
     display: inline-block;
-    padding: 2px 9px;
+    padding: 2px 8px;
     border-radius: 20px;
     font-size: 10px;
     font-weight: 700;
@@ -256,117 +267,81 @@
     margin-bottom: 6px;
   }
 
-  .sentiment-POSITIVE { background: rgba(76,175,80,.18);   color: var(--pos); }
-  .sentiment-NEUTRAL  { background: rgba(120,144,156,.18); color: var(--neu); }
-  .sentiment-NEGATIVE { background: rgba(239,83,80,.18);   color: var(--neg); }
+  .sent-POSITIVE { background: rgba(76,175,80,.15);   color: var(--pos); }
+  .sent-NEUTRAL  { background: rgba(120,144,156,.15); color: var(--neu); }
+  .sent-NEGATIVE { background: rgba(239,83,80,.15);   color: var(--neg); }
 
-  .news-summary {
-    font-size: 11px;
-    color: var(--muted);
-    margin-bottom: 10px;
-    line-height: 1.4;
-  }
+  /* tag pills */
+  .tag-groups { display: flex; flex-direction: column; gap: 5px; }
 
-  /* catalysts / risks / worries as tag pills */
-  .tag-groups {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    margin-bottom: 8px;
-  }
-
-  .tag-group-row {
+  .tag-row {
     display: flex;
     align-items: flex-start;
-    gap: 6px;
+    gap: 5px;
     flex-wrap: wrap;
   }
 
-  .tag-group-label {
+  .tag-lbl {
     font-size: 10px;
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.4px;
     white-space: nowrap;
     padding-top: 2px;
-    min-width: 56px;
+    min-width: 52px;
   }
 
-  .tag-group-label.cat   { color: var(--pos); }
-  .tag-group-label.risk  { color: var(--neg); }
-  .tag-group-label.worry { color: var(--hold-short); }
+  .tag-lbl.cat   { color: var(--pos); }
+  .tag-lbl.risk  { color: var(--neg); }
+  .tag-lbl.worry { color: var(--hold-short); }
 
   .tag-pill {
     display: inline-block;
     border-radius: 4px;
-    padding: 2px 7px;
+    padding: 2px 6px;
     font-size: 10px;
     line-height: 1.5;
     font-weight: 500;
   }
 
-  .tag-pill.cat   { background: rgba(76,175,80,.12);  color: var(--pos);        border: 1px solid rgba(76,175,80,.25); }
-  .tag-pill.risk  { background: rgba(239,83,80,.12);  color: var(--neg);        border: 1px solid rgba(239,83,80,.25); }
-  .tag-pill.worry { background: rgba(255,152,0,.12);  color: var(--hold-short); border: 1px solid rgba(255,152,0,.25); }
+  .tag-pill.cat   { background: rgba(76,175,80,.1);   color: var(--pos);        border: 1px solid rgba(76,175,80,.2); }
+  .tag-pill.risk  { background: rgba(239,83,80,.1);   color: var(--neg);        border: 1px solid rgba(239,83,80,.2); }
+  .tag-pill.worry { background: rgba(255,152,0,.1);   color: var(--hold-short); border: 1px solid rgba(255,152,0,.2); }
 
-  /* target bar */
-  .target-bar {
+  /* ── Footer bar ─────────────────────────────────────────────────────── */
+  .card-footer {
     background: var(--surface2);
     border-top: 1px solid var(--border);
-    padding: 8px 16px;
+    padding: 7px 16px;
     font-size: 11px;
     display: flex;
-    gap: 16px;
+    gap: 14px;
     flex-wrap: wrap;
     align-items: center;
-  }
-
-  .target-bar .tb-item {
-    display: flex;
-    gap: 4px;
-    align-items: center;
-  }
-
-  .target-bar .tb-label {
     color: var(--muted);
   }
 
-  .target-bar .tb-val {
-    color: var(--text);
-    font-weight: 600;
-  }
+  .cf-item { display: flex; gap: 4px; align-items: center; }
+  .cf-label { color: var(--muted); }
+  .cf-val { color: var(--text); font-weight: 600; }
 
-  /* handoff bar */
-  .handoff-bar {
-    background: var(--surface2);
-    border-top: 1px solid var(--border);
-    padding: 8px 16px;
+  /* ── Memory bar ─────────────────────────────────────────────────────── */
+  .mem-bar {
+    background: rgba(33,150,243,.05);
+    border-top: 1px solid rgba(33,150,243,.12);
+    padding: 6px 16px;
     font-size: 11px;
     color: var(--muted);
     display: flex;
-    gap: 10px;
-    flex-wrap: wrap;
+    gap: 8px;
     align-items: flex-start;
     line-height: 1.5;
   }
 
-  .handoff-thesis {
-    flex: 1;
-    min-width: 0;
-  }
+  .mem-icon { color: var(--buy); flex-shrink: 0; }
+  .mem-thesis { flex: 1; min-width: 0; }
 
-  .handoff-label {
-    color: var(--buy);
-    font-weight: 700;
-    margin-right: 4px;
-  }
-
-  .handoff-watch {
-    color: var(--muted);
-    flex-shrink: 0;
-  }
-
-  /* empty state */
+  /* ── Empty state ────────────────────────────────────────────────────── */
   .empty-grid {
     grid-column: 1 / -1;
     text-align: center;
@@ -374,18 +349,8 @@
     color: var(--muted);
   }
 
-  .empty-grid h2 {
-    font-size: 20px;
-    color: var(--text);
-    margin-bottom: 8px;
-  }
-
-  .empty-grid p {
-    font-size: 13px;
-    max-width: 440px;
-    margin: 0 auto;
-    line-height: 1.6;
-  }
+  .empty-grid h2 { font-size: 20px; color: var(--text); margin-bottom: 8px; }
+  .empty-grid p  { font-size: 13px; max-width: 440px; margin: 0 auto; line-height: 1.6; }
 </style>
 {% endblock %}
 
@@ -397,9 +362,9 @@
 
 {% for w in key_warnings %}
 <div class="key-warn-bar {{ w.level }}">
-  <span class="kw-icon">{{ '🔴' if w.level == 'alert' else ('🟡' if w.level == 'warn' else 'ℹ️') }}</span>
+  <span>{{ '🔴' if w.level == 'alert' else ('🟡' if w.level == 'warn' else 'ℹ️') }}</span>
   <span>{{ w.message }}</span>
-  <a href="/sync#key-rotation">Mark as rotated →</a>
+  <a href="/sync#key-rotation">Manage →</a>
 </div>
 {% endfor %}
 
@@ -408,33 +373,53 @@
   <div id="log-lines">Initialising…</div>
 </div>
 
-<!-- Summary bar -->
-<div class="summary-bar">
-  <div class="summary-card">
+<!-- Portfolio summary -->
+<div class="summary-strip">
+  <div class="s-card">
     <div class="s-label">Portfolio Value</div>
     <div class="s-value" id="s-value">—</div>
   </div>
-  <div class="summary-card">
+  <div class="s-card">
     <div class="s-label">Invested</div>
     <div class="s-value" id="s-cost">—</div>
   </div>
-  <div class="summary-card">
+  <div class="s-card">
     <div class="s-label">Total P&amp;L</div>
     <div class="s-value" id="s-pnl">—</div>
+    <div class="s-sub" id="s-pnl-pct">—</div>
   </div>
-  <div class="summary-card">
-    <div class="s-label">P&amp;L %</div>
-    <div class="s-value" id="s-pnl-pct">—</div>
-  </div>
-  <div class="summary-card">
+  <div class="s-card">
     <div class="s-label">Positions</div>
-    <div class="s-value" id="s-count">—</div>
+    <div class="s-value" id="s-count">{{ cards|length }}</div>
   </div>
 </div>
 
-<!-- Controls row -->
+<!-- Dividend summary -->
+{% if dividend_stats and dividend_stats.all_time > 0 %}
+<div class="div-strip">
+  <div class="div-card">
+    <div class="s-label">Dividends All‑Time</div>
+    <div class="s-value div">£{{ '%.2f'|format(dividend_stats.all_time) }}</div>
+    <div class="s-sub">{{ dividend_stats.count }} payment{{ 's' if dividend_stats.count != 1 }}</div>
+  </div>
+  <div class="div-card">
+    <div class="s-label">Last 30 Days</div>
+    <div class="s-value div">£{{ '%.2f'|format(dividend_stats.last_30d) }}</div>
+  </div>
+  <div class="div-card">
+    <div class="s-label">Last 7 Days</div>
+    <div class="s-value div">£{{ '%.2f'|format(dividend_stats.last_7d) }}</div>
+  </div>
+  <div class="div-card" style="cursor:pointer;flex:0;min-width:100px" onclick="location.href='/history#dividends'">
+    <div class="s-label">All Payments</div>
+    <div class="s-value div" style="font-size:14px">View →</div>
+  </div>
+</div>
+{% endif %}
+
+<!-- Controls -->
 <div class="controls-row">
-  <button class="btn-primary" id="run-btn" onclick="triggerRun()">Run Analysis Now</button>
+  <button class="btn-primary" id="run-btn" onclick="triggerRun()">Run Analysis</button>
   <button class="btn-secondary" onclick="location.href='/sync'">Sync T212</button>
   <span class="run-status" id="run-status-text"></span>
 </div>
@@ -444,7 +429,7 @@
   {% if not cards %}
   <div class="empty-grid">
     <h2>No analysis data yet</h2>
-    <p>Add your holdings to <code>stocks.xlsx</code> or sync Trading 212, then click Run Analysis.</p>
+    <p>Add holdings to <code>stocks.xlsx</code> or sync Trading 212, then click Run Analysis.</p>
   </div>
   {% endif %}
 
@@ -460,134 +445,98 @@
 
   <div class="stock-card rec-{{ rec }}" onclick="location.href='/ticker/{{ ticker }}'">
 
-    <!-- Header: ticker + badge + confidence -->
     <div class="card-header">
       <span class="card-ticker">{{ ticker }}</span>
       <span class="badge badge-{{ rec }}">{{ rec | replace('_', ' ') }}</span>
-      <span class="card-confidence">{{ card.confidence or '' }}</span>
+      <span class="card-conf">{{ card.confidence or '' }}</span>
     </div>
 
-    <!-- Sparkline -->
-    <div class="sparkline-wrap">
-      <canvas id="spark-{{ ticker }}" height="56"></canvas>
+    <div class="spark-wrap">
+      <canvas id="spark-{{ ticker }}" height="48"></canvas>
     </div>
 
-    <!-- Metrics row: Price | P&L % (prominent) | P&L £ | Target -->
-    <div class="metrics-row">
-      <div class="metric-chip">
-        <span class="mc-label">Price</span>
-        <span class="mc-value">{{ '%.2f'|format(price) }}</span>
+    <div class="metrics">
+      <div class="mc">
+        <span class="mc-lbl">Price</span>
+        <span class="mc-val">{{ '%.2f'|format(price) }}</span>
       </div>
-      <div class="metric-divider"></div>
-      <div class="metric-chip prominent">
-        <span class="mc-label">P&amp;L %</span>
-        <span class="mc-value {{ 'pos' if pnl_pct >= 0 else 'neg' }}">
-          {{ '%+.1f'|format(pnl_pct) }}%
-        </span>
+      <div class="vdiv"></div>
+      <div class="mc">
+        <span class="mc-lbl">P&amp;L %</span>
+        <span class="mc-val big {{ 'pos' if pnl_pct >= 0 else 'neg' }}">{{ '%+.1f'|format(pnl_pct) }}%</span>
       </div>
-      <div class="metric-divider"></div>
-      <div class="metric-chip">
-        <span class="mc-label">P&amp;L £</span>
-        <span class="mc-value {{ 'pos' if pnl_abs >= 0 else 'neg' }}">
-          {{ '%+.2f'|format(pnl_abs) }}
-        </span>
+      <div class="vdiv"></div>
+      <div class="mc">
+        <span class="mc-lbl">P&amp;L</span>
+        <span class="mc-val {{ 'pos' if pnl_abs >= 0 else 'neg' }}">{{ '%+.0f'|format(pnl_abs) }}</span>
       </div>
       {% if card.price_target_30d %}
-      <div class="metric-divider"></div>
-      <div class="metric-chip">
-        <span class="mc-label">30d Target</span>
-        <span class="mc-value">{{ '%.2f'|format(card.price_target_30d) }}</span>
+      <div class="vdiv"></div>
+      <div class="mc">
+        <span class="mc-lbl">Target</span>
+        <span class="mc-val">{{ '%.2f'|format(card.price_target_30d) }}</span>
       </div>
       {% endif %}
     </div>
 
-    <!-- Fundamentals strip -->
     {% if card.pe_ratio or card.analyst_target_mean or card.next_earnings or card.eps_growth_pct is not none %}
     <div class="fund-strip">
-      {% if card.pe_ratio %}
-      <span class="fund-pill">P/E <strong>{{ card.pe_ratio }}</strong></span>
-      {% endif %}
-      {% if card.eps_growth_pct is not none %}
-      <span class="fund-pill">EPS growth <strong>{{ '%+.1f'|format(card.eps_growth_pct) }}%</strong></span>
-      {% endif %}
-      {% if card.analyst_target_mean %}
-      <span class="fund-pill">
-        Analyst <strong>{{ '%.2f'|format(card.analyst_target_mean) }}</strong>
-        {% if card.analyst_consensus %}<em style="color:var(--muted)"> {{ card.analyst_consensus | upper }}</em>{% endif %}
-      </span>
-      {% endif %}
-      {% if card.next_earnings %}
-      <span class="fund-pill">Earnings <strong>{{ card.next_earnings }}</strong></span>
-      {% endif %}
+      {% if card.pe_ratio %}<span class="fp">P/E <strong>{{ card.pe_ratio }}</strong></span>{% endif %}
+      {% if card.eps_growth_pct is not none %}<span class="fp">EPS <strong>{{ '%+.0f'|format(card.eps_growth_pct) }}%</strong></span>{% endif %}
+      {% if card.analyst_target_mean %}<span class="fp">Analyst <strong>{{ '%.2f'|format(card.analyst_target_mean) }}</strong>{% if card.analyst_consensus %} <em style="color:var(--muted)">{{ card.analyst_consensus|upper }}</em>{% endif %}</span>{% endif %}
+      {% if card.next_earnings %}<span class="fp">Earnings <strong>{{ card.next_earnings }}</strong></span>{% endif %}
     </div>
     {% endif %}
 
-    <!-- Body: reasoning + sentiment + tag groups -->
     <div class="card-body">
-      <div class="reasoning">{{ card.reasoning or '' }}</div>
-
       {% if card.news_sentiment %}
-      <span class="sentiment-pill sentiment-{{ card.news_sentiment }}">{{ card.news_sentiment }}</span>
-      <div class="news-summary">{{ card.news_summary or '' }}</div>
+      <span class="sent-pill sent-{{ card.news_sentiment }}">{{ card.news_sentiment }}</span>
       {% endif %}
+      <div class="reasoning">{{ card.reasoning or '' }}</div>
 
       <div class="tag-groups">
         {% if card.catalysts %}
-        <div class="tag-group-row">
-          <span class="tag-group-label cat">Catalysts</span>
-          {% for c in (card.catalysts or [])[:3] %}
-          <span class="tag-pill cat">{{ c }}</span>
-          {% endfor %}
+        <div class="tag-row">
+          <span class="tag-lbl cat">Catalysts</span>
+          {% for c in (card.catalysts or [])[:3] %}<span class="tag-pill cat">{{ c }}</span>{% endfor %}
         </div>
         {% endif %}
         {% if card.risks %}
-        <div class="tag-group-row">
-          <span class="tag-group-label risk">Risks</span>
-          {% for r in (card.risks or [])[:3] %}
-          <span class="tag-pill risk">{{ r }}</span>
-          {% endfor %}
-        </div>
-        {% endif %}
-        {% if card.worries %}
-        <div class="tag-group-row">
-          <span class="tag-group-label worry">Worries</span>
-          {% for w in (card.worries or [])[:3] %}
-          <span class="tag-pill worry">{{ w }}</span>
-          {% endfor %}
+        <div class="tag-row">
+          <span class="tag-lbl risk">Risks</span>
+          {% for r in (card.risks or [])[:2] %}<span class="tag-pill risk">{{ r }}</span>{% endfor %}
         </div>
         {% endif %}
       </div>
     </div>
 
-    <!-- Target / outlook footer bar -->
-    {% if card.price_target_30d %}
-    <div class="target-bar">
-      <div class="tb-item">
-        <span class="tb-label">Target</span>
-        <span class="tb-val">{{ '%.2f'|format(card.price_target_30d) }}</span>
+    {% if card.price_target_30d or card.outlook_90d %}
+    <div class="card-footer">
+      {% if card.price_target_30d %}
+      <div class="cf-item">
+        <span class="cf-label">30d target</span>
+        <span class="cf-val">{{ '%.2f'|format(card.price_target_30d) }}</span>
       </div>
-      <div class="tb-item">
-        <span class="tb-label">Range</span>
-        <span class="tb-val">{{ '%.2f'|format(card.price_target_lo or 0) }} – {{ '%.2f'|format(card.price_target_hi or 0) }}</span>
+      {% if card.price_target_lo %}
+      <div class="cf-item">
+        <span class="cf-label">range</span>
+        <span class="cf-val">{{ '%.2f'|format(card.price_target_lo) }} – {{ '%.2f'|format(card.price_target_hi) }}</span>
       </div>
+      {% endif %}
+      {% endif %}
       {% if card.outlook_90d %}
-      <div class="tb-item">
-        <span class="tb-label">90d</span>
-        <span class="tb-val">{{ card.outlook_90d }}</span>
+      <div class="cf-item" style="flex:1;min-width:0">
+        <span class="cf-label">90d</span>
+        <span style="color:var(--muted);font-size:11px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis">{{ card.outlook_90d }}</span>
       </div>
       {% endif %}
     </div>
     {% endif %}
 
-    <!-- Handoff / memory strip -->
-    {% if hn %}
-    <div class="handoff-bar">
-      <div class="handoff-thesis">
-        <span class="handoff-label">🧠</span>{{ hn.thesis_summary or '' }}
-      </div>
-      {% if hn.watch_items %}
-      <div class="handoff-watch">👁 {{ hn.watch_items | join(' · ') }}</div>
-      {% endif %}
+    {% if hn and hn.thesis_summary %}
+    <div class="mem-bar">
+      <span class="mem-icon">🧠</span>
+      <span class="mem-thesis">{{ hn.thesis_summary }}</span>
     </div>
     {% endif %}
 
@@ -604,19 +553,18 @@
       const r = await fetch('/api/dashboard');
       const d = await r.json();
       const s = d.summary;
-      document.getElementById('s-value').textContent = '£' + fmtNum(s.total_value);
-      document.getElementById('s-cost').textContent  = '£' + fmtNum(s.total_cost);
-      const pnlEl  = document.getElementById('s-pnl');
-      const pctEl  = document.getElementById('s-pnl-pct');
-      pnlEl.textContent  = (s.total_pnl >= 0 ? '+' : '') + '£' + fmtNum(Math.abs(s.total_pnl));
-      pnlEl.className    = 's-value ' + (s.total_pnl >= 0 ? 'pos' : 'neg');
-      pctEl.textContent  = (s.total_pnl_pct >= 0 ? '+' : '') + s.total_pnl_pct + '%';
-      pctEl.className    = 's-value ' + (s.total_pnl_pct >= 0 ? 'pos' : 'neg');
+      document.getElementById('s-value').textContent = '£' + fmt(s.total_value);
+      document.getElementById('s-cost').textContent  = '£' + fmt(s.total_cost);
+      const pnl = s.total_pnl, pct = s.total_pnl_pct;
+      const pnlEl = document.getElementById('s-pnl');
+      pnlEl.textContent = (pnl >= 0 ? '+£' : '-£') + fmt(Math.abs(pnl));
+      pnlEl.className = 's-value ' + (pnl >= 0 ? 'pos' : 'neg');
+      document.getElementById('s-pnl-pct').textContent = (pct >= 0 ? '+' : '') + pct + '%';
       document.getElementById('s-count').textContent = s.position_count;
     } catch(e) {}
   }
 
-  function fmtNum(n) {
+  function fmt(n) {
     if (n == null) return '—';
     return Math.abs(n) >= 1000 ? (Math.abs(n)/1000).toFixed(1)+'k' : Math.abs(n).toFixed(2);
   }
@@ -636,13 +584,12 @@
         logEl.textContent = lines.length ? lines[lines.length - 1] : 'Running…';
         btn.disabled = true;
         document.getElementById('nav-status').textContent = 'Analysis running…';
-        if (!polling) { polling = true; }
+        if (!polling) polling = true;
         setTimeout(pollStatus, 2000);
       } else {
         banner.className = '';
         btn.disabled = false;
-        document.getElementById('nav-status').textContent =
-          d.status === 'done' ? 'Last run complete ✓' : '';
+        document.getElementById('nav-status').textContent = d.status === 'done' ? 'Last run complete ✓' : '';
         if (polling && d.status !== 'running') {
           polling = false;
           location.reload();
@@ -686,59 +633,33 @@
       const r = await fetch('/api/sparkline/' + ticker);
       const d = await r.json();
       if (!d.closes || d.closes.length < 2) return;
-
       const colour = REC_COLOURS[rec] || '#78909c';
-      const labels = d.closes.map((_, i) => i);
-
-      // cost basis reference line data
-      const costLine = costBasis ? d.closes.map(() => costBasis) : null;
-
       new Chart(canvas, {
         type: 'line',
         data: {
-          labels,
+          labels: d.closes.map((_, i) => i),
           datasets: [
-            {
-              data: d.closes,
-              borderColor: colour,
-              borderWidth: 1.5,
-              pointRadius: 0,
-              tension: 0.3,
-              fill: false,
-            },
-            ...(costLine ? [{
-              data: costLine,
-              borderColor: 'rgba(255,255,255,0.2)',
-              borderWidth: 1,
-              borderDash: [3, 3],
-              pointRadius: 0,
-              fill: false,
-            }] : []),
+            { data: d.closes, borderColor: colour, borderWidth: 1.5, pointRadius: 0, tension: 0.3, fill: false },
+            ...(costBasis ? [{ data: d.closes.map(() => costBasis), borderColor: 'rgba(255,255,255,0.15)', borderWidth: 1, borderDash: [3,3], pointRadius: 0, fill: false }] : []),
           ],
         },
         options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          animation: false,
+          responsive: true, maintainAspectRatio: false, animation: false,
           plugins: { legend: { display: false }, tooltip: { enabled: false } },
-          scales: {
-            x: { display: false },
-            y: { display: false },
-          },
+          scales: { x: { display: false }, y: { display: false } },
         },
       });
     } catch(e) {}
   }
 
-  // Kick off sparklines for each card (staggered to avoid hammering yfinance)
+  // Load sparklines with small stagger to avoid hammering yfinance
   const sparkJobs = [
     {% for card in cards %}
     { ticker: '{{ card.ticker }}', cost: {{ card.cost_basis or 0 }}, rec: '{{ card.recommendation or "HOLD" }}' },
     {% endfor %}
   ];
-  sparkJobs.forEach((j, i) => setTimeout(() => loadSparkline(j.ticker, j.cost, j.rec), i * 200));
+  sparkJobs.forEach((j, i) => setTimeout(() => loadSparkline(j.ticker, j.cost, j.rec), i * 80));
 
-  // Init
   loadSummary();
   pollStatus();
 </script>
