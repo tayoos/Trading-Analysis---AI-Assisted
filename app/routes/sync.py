@@ -1,9 +1,11 @@
+import logging
 import threading
 from datetime import datetime, timezone
 
 from flask import Blueprint, current_app, jsonify, render_template, request
 
 bp = Blueprint("sync", __name__)
+logger = logging.getLogger(__name__)
 
 _KEY_WARN_DAYS  = 60   # amber warning
 _KEY_ALERT_DAYS = 90   # red alert
@@ -64,9 +66,9 @@ def sync_t212():
             new_divs = t212.get_dividends(since=last_div)
             if new_divs:
                 saved = db.save_dividends(new_divs)
-                current_app.logger.info("Saved %d new dividend payments", saved)
+                logger.info("Saved %d new dividend payments", saved)
         except Exception:
-            current_app.logger.exception("T212 sync failed")
+            logger.exception("T212 sync failed")
 
     threading.Thread(target=_do_sync, daemon=True, name="t212-sync").start()
     return jsonify({"status": "sync_started"}), 202
@@ -85,9 +87,9 @@ def trigger_backup():
     def _do_backup():
         try:
             result = backup.run()
-            current_app.logger.info("Manual backup complete: %s", result)
+            logger.info("Manual backup complete: %s", result)
         except Exception:
-            current_app.logger.exception("Manual backup failed")
+            logger.exception("Manual backup failed")
 
     threading.Thread(target=_do_backup, daemon=True, name="manual-backup").start()
     return jsonify({"status": "backup_started"}), 202

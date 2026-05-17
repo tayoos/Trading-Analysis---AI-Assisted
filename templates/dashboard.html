@@ -1,150 +1,399 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Stock Analyzer</title>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
-  <style>
-    :root {
-      --bg: #0f1117; --surface: #1a1d2e; --surface2: #242740;
-      --border: #2d3156; --text: #e2e4f0; --muted: #7b7fa8;
-      --buy: #2196f3; --hold: #78909c; --sell: #ef5350;
-      --hold-long: #4caf50; --hold-short: #ff9800; --watch: #9c27b0;
-      --pos: #4caf50; --neg: #ef5350; --neu: #78909c;
-      --radius: 10px; --gap: 14px;
-    }
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { background: var(--bg); color: var(--text); font-family: system-ui, sans-serif;
-           font-size: 14px; min-height: 100vh; }
-    a { color: var(--buy); text-decoration: none; }
-    a:hover { text-decoration: underline; }
+{% extends "base.html" %}
 
-    nav { background: var(--surface); border-bottom: 1px solid var(--border);
-          padding: 12px 24px; display: flex; align-items: center; gap: 24px; }
-    nav .logo { font-weight: 700; font-size: 16px; }
-    nav a { color: var(--muted); font-size: 13px; }
-    nav a:hover { color: var(--text); text-decoration: none; }
-    nav .spacer { flex: 1; }
+{% block title %}Dashboard — StockAnalyser{% endblock %}
 
-    #status-banner { display: none; background: var(--surface2);
-                     border-bottom: 1px solid var(--border); padding: 8px 24px; font-size: 13px; }
-    #status-banner.visible { display: flex; align-items: center; gap: 10px; }
-    .spinner { width: 14px; height: 14px; border: 2px solid var(--border);
-               border-top-color: var(--buy); border-radius: 50%;
-               animation: spin .7s linear infinite; }
-    @keyframes spin { to { transform: rotate(360deg); } }
-    #log-lines { font-family: monospace; font-size: 12px; color: var(--muted);
-                 max-width: 700px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+{% block head %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+<style>
+  /* ── Status banner ──────────────────────────────────────────────── */
+  #status-banner {
+    display: none;
+    background: var(--surface2);
+    border-bottom: 1px solid var(--border);
+    padding: 10px 24px;
+    font-size: 13px;
+    gap: 10px;
+    align-items: center;
+  }
 
-    .summary-bar { display: flex; gap: var(--gap); padding: 16px 24px; flex-wrap: wrap; }
-    .summary-card { background: var(--surface); border: 1px solid var(--border);
-                    border-radius: var(--radius); padding: 12px 18px; min-width: 150px; }
-    .summary-card .label { font-size: 11px; color: var(--muted);
-                           text-transform: uppercase; letter-spacing: .5px; }
-    .summary-card .value { font-size: 22px; font-weight: 700; margin-top: 4px; }
-    .summary-card .value.pos { color: var(--pos); }
-    .summary-card .value.neg { color: var(--neg); }
+  #status-banner.visible {
+    display: flex;
+  }
 
-    .controls { padding: 0 24px 12px; display: flex; align-items: center; gap: 10px; }
-    button { cursor: pointer; border: none; border-radius: 6px; padding: 8px 16px;
-             font-size: 13px; font-weight: 600; transition: opacity .15s; }
-    button:hover { opacity: .85; }
-    button:disabled { opacity: .4; cursor: not-allowed; }
-    .btn-primary   { background: var(--buy); color: #fff; }
-    .btn-secondary { background: var(--surface2); color: var(--text); border: 1px solid var(--border); }
+  #log-lines {
+    font-family: monospace;
+    font-size: 12px;
+    color: var(--muted);
+    max-width: 700px;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
 
-    .grid { display: grid; gap: var(--gap); padding: 0 24px 24px;
-            grid-template-columns: repeat(auto-fill, minmax(380px, 1fr)); }
+  /* ── Key warnings bar ───────────────────────────────────────────── */
+  .key-warn-bar {
+    padding: 9px 24px;
+    font-size: 12px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
 
-    .card { background: var(--surface); border: 1px solid var(--border);
-            border-radius: var(--radius); overflow: hidden;
-            transition: border-color .2s; cursor: pointer; }
-    .card:hover { border-color: var(--buy); }
+  .key-warn-bar.warn  { background: rgba(255,152,0,.12);  border-bottom: 1px solid rgba(255,152,0,.25); }
+  .key-warn-bar.alert { background: rgba(239,83,80,.12);  border-bottom: 1px solid rgba(239,83,80,.25); }
+  .key-warn-bar.info  { background: rgba(33,150,243,.08); border-bottom: 1px solid rgba(33,150,243,.18); }
+  .key-warn-bar .kw-icon { font-size: 14px; }
+  .key-warn-bar a { font-size: 12px; }
 
-    .card-header { display: flex; align-items: center; gap: 10px;
-                   padding: 12px 16px; border-bottom: 1px solid var(--border); }
-    .ticker { font-size: 18px; font-weight: 700; flex: 1; }
-    .badge { padding: 3px 10px; border-radius: 4px; font-size: 12px; font-weight: 700; letter-spacing: .5px; }
-    .badge-BUY        { background: var(--buy);        color: #fff; }
-    .badge-SELL       { background: var(--sell);       color: #fff; }
-    .badge-HOLD_LONG  { background: var(--hold-long);  color: #fff; }
-    .badge-HOLD_SHORT { background: var(--hold-short); color: #000; }
-    .badge-HOLD       { background: var(--hold);       color: #fff; }
-    .badge-WATCH      { background: var(--watch);      color: #fff; }
-    .confidence { font-size: 11px; color: var(--muted); }
+  /* ── Summary bar ────────────────────────────────────────────────── */
+  .summary-bar {
+    display: flex;
+    gap: var(--gap);
+    padding: 20px 24px 0;
+    flex-wrap: wrap;
+  }
 
-    /* sparkline sits under the header */
-    .sparkline-wrap { padding: 6px 16px 0; height: 50px; position: relative; }
-    .sparkline-wrap canvas { display: block; }
+  .summary-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 14px 20px;
+    min-width: 148px;
+    flex: 1;
+  }
 
-    .card-metrics { display: grid; grid-template-columns: repeat(3, 1fr);
-                    gap: 1px; background: var(--border); }
-    .metric { background: var(--surface); padding: 10px 12px; }
-    .metric .mlabel { font-size: 10px; color: var(--muted);
-                      text-transform: uppercase; letter-spacing: .4px; }
-    .metric .mvalue { font-size: 14px; font-weight: 600; margin-top: 2px; }
-    .metric .mvalue.pos { color: var(--pos); }
-    .metric .mvalue.neg { color: var(--neg); }
+  .summary-card .s-label {
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    margin-bottom: 6px;
+  }
 
-    /* fundamentals strip */
-    .fund-strip { display: flex; gap: 16px; padding: 7px 16px;
-                  background: var(--surface2); border-bottom: 1px solid var(--border);
-                  font-size: 11px; color: var(--muted); flex-wrap: wrap; }
-    .fund-strip .fitem strong { color: var(--text); }
+  .summary-card .s-value {
+    font-size: 22px;
+    font-weight: 700;
+    line-height: 1.1;
+    color: var(--text);
+  }
 
-    .card-body { padding: 12px 16px; }
-    .reasoning { font-size: 13px; line-height: 1.5; color: var(--text); margin-bottom: 10px; }
-    .sentiment-pill { display: inline-block; padding: 2px 8px; border-radius: 4px;
-                      font-size: 11px; font-weight: 600; margin-bottom: 8px; }
-    .sentiment-POSITIVE { background: rgba(76,175,80,.2);   color: var(--pos); }
-    .sentiment-NEUTRAL  { background: rgba(120,144,156,.2); color: var(--neu); }
-    .sentiment-NEGATIVE { background: rgba(239,83,80,.2);   color: var(--neg); }
-    .news-summary { font-size: 12px; color: var(--muted); margin-bottom: 10px; }
+  .summary-card .s-value.pos { color: var(--pos); }
+  .summary-card .s-value.neg { color: var(--neg); }
 
-    .three-col { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 10px; }
-    .col-head { font-size: 10px; font-weight: 700; text-transform: uppercase;
-                letter-spacing: .4px; margin-bottom: 4px; }
-    .col-head.cat   { color: var(--pos); }
-    .col-head.risk  { color: var(--neg); }
-    .col-head.worry { color: var(--hold-short); }
-    .col-list { font-size: 11px; color: var(--muted); line-height: 1.6; list-style: none; }
-    .col-list li::before { content: "•  "; color: var(--border); }
+  /* ── Controls row ───────────────────────────────────────────────── */
+  .controls-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 16px 24px;
+  }
 
-    .target-bar { background: var(--surface2); padding: 8px 16px;
-                  font-size: 12px; display: flex; gap: 16px; flex-wrap: wrap;
-                  border-top: 1px solid var(--border); }
-    .target-bar span { color: var(--muted); }
-    .target-bar strong { color: var(--text); }
+  .controls-row .run-status {
+    margin-left: auto;
+    font-size: 12px;
+    color: var(--muted);
+  }
 
-    .handoff-bar { background: var(--surface2); border-top: 1px solid var(--border);
-                   padding: 8px 16px; font-size: 11px; color: var(--muted);
-                   display: flex; gap: 12px; flex-wrap: wrap; }
-    .handoff-bar .hb-label { color: var(--buy); font-weight: 600; }
+  /* ── Card grid ──────────────────────────────────────────────────── */
+  .card-grid {
+    display: grid;
+    gap: var(--gap);
+    padding: 0 24px 24px;
+    grid-template-columns: repeat(auto-fill, minmax(390px, 1fr));
+  }
 
-    .empty { text-align: center; padding: 80px 24px; color: var(--muted); }
-    .empty h2 { font-size: 20px; margin-bottom: 8px; color: var(--text); }
+  /* ── Stock card ─────────────────────────────────────────────────── */
+  .stock-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+    cursor: pointer;
+    transition: border-color 0.2s, box-shadow 0.2s;
+    display: flex;
+    flex-direction: column;
+  }
 
-    /* ── Key rotation warnings ── */
-    .key-warn-bar { padding: 8px 24px; font-size: 12px; display: flex;
-                    align-items: center; gap: 12px; flex-wrap: wrap; }
-    .key-warn-bar.warn  { background: rgba(255,152,0,.15); border-bottom: 1px solid rgba(255,152,0,.3); }
-    .key-warn-bar.alert { background: rgba(239,83,80,.15);  border-bottom: 1px solid rgba(239,83,80,.3); }
-    .key-warn-bar.info  { background: rgba(33,150,243,.1);  border-bottom: 1px solid rgba(33,150,243,.2); }
-    .key-warn-bar .kw-icon { font-size: 14px; }
-    .key-warn-bar a { font-size: 12px; }
-  </style>
-</head>
-<body>
+  .stock-card:hover {
+    border-color: var(--buy);
+    box-shadow: 0 4px 20px rgba(33,150,243,.08);
+  }
 
-<nav>
-  <span class="logo">📈 Stock Analyzer</span>
-  <a href="/">Dashboard</a>
-  <a href="/history">History</a>
-  <a href="/sync">Sync</a>
-  <span class="spacer"></span>
-  <span id="nav-status" style="font-size:12px;color:var(--muted)"></span>
-</nav>
+  /* left accent border by recommendation */
+  .stock-card.rec-BUY        { border-left: 4px solid var(--buy); }
+  .stock-card.rec-SELL       { border-left: 4px solid var(--sell); }
+  .stock-card.rec-HOLD_LONG  { border-left: 4px solid var(--hold-long); }
+  .stock-card.rec-HOLD_SHORT { border-left: 4px solid var(--hold-short); }
+  .stock-card.rec-HOLD       { border-left: 4px solid var(--hold); }
+  .stock-card.rec-WATCH      { border-left: 4px solid var(--watch); }
+
+  /* card header */
+  .card-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 14px 16px 10px;
+  }
+
+  .card-ticker {
+    font-size: 19px;
+    font-weight: 700;
+    flex: 1;
+    letter-spacing: -0.3px;
+  }
+
+  .card-confidence {
+    font-size: 11px;
+    color: var(--muted);
+  }
+
+  /* sparkline */
+  .sparkline-wrap {
+    padding: 0 16px;
+    height: 56px;
+    position: relative;
+  }
+
+  .sparkline-wrap canvas {
+    display: block;
+  }
+
+  /* metrics row */
+  .metrics-row {
+    display: flex;
+    gap: 0;
+    padding: 10px 16px 8px;
+    align-items: flex-end;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .metric-chip {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .metric-chip .mc-label {
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+  }
+
+  .metric-chip .mc-value {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text);
+    line-height: 1;
+  }
+
+  .metric-chip.prominent .mc-value {
+    font-size: 19px;
+    font-weight: 700;
+  }
+
+  .metric-chip .mc-value.pos { color: var(--pos); }
+  .metric-chip .mc-value.neg { color: var(--neg); }
+
+  .metric-divider {
+    width: 1px;
+    height: 28px;
+    background: var(--border);
+    align-self: center;
+  }
+
+  /* fundamentals strip */
+  .fund-strip {
+    display: flex;
+    gap: 6px;
+    padding: 6px 16px;
+    flex-wrap: wrap;
+  }
+
+  .fund-pill {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 2px 8px;
+    font-size: 11px;
+    color: var(--muted);
+    white-space: nowrap;
+  }
+
+  .fund-pill strong {
+    color: var(--text);
+  }
+
+  /* card body */
+  .card-body {
+    padding: 10px 16px;
+    flex: 1;
+  }
+
+  .reasoning {
+    font-size: 12px;
+    line-height: 1.55;
+    color: var(--muted);
+    margin-bottom: 10px;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  /* sentiment */
+  .sentiment-pill {
+    display: inline-block;
+    padding: 2px 9px;
+    border-radius: 20px;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.3px;
+    margin-bottom: 6px;
+  }
+
+  .sentiment-POSITIVE { background: rgba(76,175,80,.18);   color: var(--pos); }
+  .sentiment-NEUTRAL  { background: rgba(120,144,156,.18); color: var(--neu); }
+  .sentiment-NEGATIVE { background: rgba(239,83,80,.18);   color: var(--neg); }
+
+  .news-summary {
+    font-size: 11px;
+    color: var(--muted);
+    margin-bottom: 10px;
+    line-height: 1.4;
+  }
+
+  /* catalysts / risks / worries as tag pills */
+  .tag-groups {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-bottom: 8px;
+  }
+
+  .tag-group-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+
+  .tag-group-label {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    white-space: nowrap;
+    padding-top: 2px;
+    min-width: 56px;
+  }
+
+  .tag-group-label.cat   { color: var(--pos); }
+  .tag-group-label.risk  { color: var(--neg); }
+  .tag-group-label.worry { color: var(--hold-short); }
+
+  .tag-pill {
+    display: inline-block;
+    border-radius: 4px;
+    padding: 2px 7px;
+    font-size: 10px;
+    line-height: 1.5;
+    font-weight: 500;
+  }
+
+  .tag-pill.cat   { background: rgba(76,175,80,.12);  color: var(--pos);        border: 1px solid rgba(76,175,80,.25); }
+  .tag-pill.risk  { background: rgba(239,83,80,.12);  color: var(--neg);        border: 1px solid rgba(239,83,80,.25); }
+  .tag-pill.worry { background: rgba(255,152,0,.12);  color: var(--hold-short); border: 1px solid rgba(255,152,0,.25); }
+
+  /* target bar */
+  .target-bar {
+    background: var(--surface2);
+    border-top: 1px solid var(--border);
+    padding: 8px 16px;
+    font-size: 11px;
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+
+  .target-bar .tb-item {
+    display: flex;
+    gap: 4px;
+    align-items: center;
+  }
+
+  .target-bar .tb-label {
+    color: var(--muted);
+  }
+
+  .target-bar .tb-val {
+    color: var(--text);
+    font-weight: 600;
+  }
+
+  /* handoff bar */
+  .handoff-bar {
+    background: var(--surface2);
+    border-top: 1px solid var(--border);
+    padding: 8px 16px;
+    font-size: 11px;
+    color: var(--muted);
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    line-height: 1.5;
+  }
+
+  .handoff-thesis {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .handoff-label {
+    color: var(--buy);
+    font-weight: 700;
+    margin-right: 4px;
+  }
+
+  .handoff-watch {
+    color: var(--muted);
+    flex-shrink: 0;
+  }
+
+  /* empty state */
+  .empty-grid {
+    grid-column: 1 / -1;
+    text-align: center;
+    padding: 80px 24px;
+    color: var(--muted);
+  }
+
+  .empty-grid h2 {
+    font-size: 20px;
+    color: var(--text);
+    margin-bottom: 8px;
+  }
+
+  .empty-grid p {
+    font-size: 13px;
+    max-width: 440px;
+    margin: 0 auto;
+    line-height: 1.6;
+  }
+</style>
+{% endblock %}
+
+{% block nav_right %}
+<span id="nav-status" style="font-size:12px;color:var(--muted)"></span>
+{% endblock %}
+
+{% block content %}
 
 {% for w in key_warnings %}
 <div class="key-warn-bar {{ w.level }}">
@@ -159,37 +408,41 @@
   <div id="log-lines">Initialising…</div>
 </div>
 
+<!-- Summary bar -->
 <div class="summary-bar">
   <div class="summary-card">
-    <div class="label">Portfolio Value</div>
-    <div class="value" id="s-value">—</div>
+    <div class="s-label">Portfolio Value</div>
+    <div class="s-value" id="s-value">—</div>
   </div>
   <div class="summary-card">
-    <div class="label">Invested</div>
-    <div class="value" id="s-cost">—</div>
+    <div class="s-label">Invested</div>
+    <div class="s-value" id="s-cost">—</div>
   </div>
   <div class="summary-card">
-    <div class="label">Total P&amp;L</div>
-    <div class="value" id="s-pnl">—</div>
+    <div class="s-label">Total P&amp;L</div>
+    <div class="s-value" id="s-pnl">—</div>
   </div>
   <div class="summary-card">
-    <div class="label">P&amp;L %</div>
-    <div class="value" id="s-pnl-pct">—</div>
+    <div class="s-label">P&amp;L %</div>
+    <div class="s-value" id="s-pnl-pct">—</div>
   </div>
   <div class="summary-card">
-    <div class="label">Positions</div>
-    <div class="value" id="s-count">—</div>
+    <div class="s-label">Positions</div>
+    <div class="s-value" id="s-count">—</div>
   </div>
 </div>
 
-<div class="controls">
+<!-- Controls row -->
+<div class="controls-row">
   <button class="btn-primary" id="run-btn" onclick="triggerRun()">Run Analysis Now</button>
   <button class="btn-secondary" onclick="location.href='/sync'">Sync T212</button>
+  <span class="run-status" id="run-status-text"></span>
 </div>
 
-<div class="grid" id="card-grid">
+<!-- Card grid -->
+<div class="card-grid" id="card-grid">
   {% if not cards %}
-  <div class="empty" style="grid-column:1/-1">
+  <div class="empty-grid">
     <h2>No analysis data yet</h2>
     <p>Add your holdings to <code>stocks.xlsx</code> or sync Trading 212, then click Run Analysis.</p>
   </div>
@@ -205,68 +458,71 @@
   {% set rec = card.recommendation or 'HOLD' %}
   {% set hn  = handoff_notes.get(ticker) %}
 
-  <div class="card" onclick="location.href='/ticker/{{ ticker }}'">
+  <div class="stock-card rec-{{ rec }}" onclick="location.href='/ticker/{{ ticker }}'">
+
+    <!-- Header: ticker + badge + confidence -->
     <div class="card-header">
-      <span class="ticker">{{ ticker }}</span>
+      <span class="card-ticker">{{ ticker }}</span>
       <span class="badge badge-{{ rec }}">{{ rec | replace('_', ' ') }}</span>
-      <span class="confidence">{{ card.confidence or '' }}</span>
+      <span class="card-confidence">{{ card.confidence or '' }}</span>
     </div>
 
-    <!-- sparkline rendered by JS after page load -->
+    <!-- Sparkline -->
     <div class="sparkline-wrap">
-      <canvas id="spark-{{ ticker }}" height="44"></canvas>
+      <canvas id="spark-{{ ticker }}" height="56"></canvas>
     </div>
 
-    <div class="card-metrics">
-      <div class="metric">
-        <div class="mlabel">Price</div>
-        <div class="mvalue">{{ '%.2f'|format(price) }}</div>
+    <!-- Metrics row: Price | P&L % (prominent) | P&L £ | Target -->
+    <div class="metrics-row">
+      <div class="metric-chip">
+        <span class="mc-label">Price</span>
+        <span class="mc-value">{{ '%.2f'|format(price) }}</span>
       </div>
-      <div class="metric">
-        <div class="mlabel">Cost</div>
-        <div class="mvalue">{{ '%.2f'|format(cost) }}</div>
-      </div>
-      <div class="metric">
-        <div class="mlabel">P&amp;L %</div>
-        <div class="mvalue {{ 'pos' if pnl_pct >= 0 else 'neg' }}">
+      <div class="metric-divider"></div>
+      <div class="metric-chip prominent">
+        <span class="mc-label">P&amp;L %</span>
+        <span class="mc-value {{ 'pos' if pnl_pct >= 0 else 'neg' }}">
           {{ '%+.1f'|format(pnl_pct) }}%
-        </div>
+        </span>
       </div>
-      <div class="metric">
-        <div class="mlabel">P&amp;L £</div>
-        <div class="mvalue {{ 'pos' if pnl_abs >= 0 else 'neg' }}">
+      <div class="metric-divider"></div>
+      <div class="metric-chip">
+        <span class="mc-label">P&amp;L £</span>
+        <span class="mc-value {{ 'pos' if pnl_abs >= 0 else 'neg' }}">
           {{ '%+.2f'|format(pnl_abs) }}
-        </div>
+        </span>
       </div>
-      <div class="metric">
-        <div class="mlabel">Shares</div>
-        <div class="mvalue">{{ shares }}</div>
+      {% if card.price_target_30d %}
+      <div class="metric-divider"></div>
+      <div class="metric-chip">
+        <span class="mc-label">30d Target</span>
+        <span class="mc-value">{{ '%.2f'|format(card.price_target_30d) }}</span>
       </div>
-      <div class="metric">
-        <div class="mlabel">30d Target</div>
-        <div class="mvalue">{{ '%.2f'|format(card.price_target_30d) if card.price_target_30d else '—' }}</div>
-      </div>
+      {% endif %}
     </div>
 
-    {% if card.pe_ratio or card.analyst_target_mean or card.next_earnings %}
+    <!-- Fundamentals strip -->
+    {% if card.pe_ratio or card.analyst_target_mean or card.next_earnings or card.eps_growth_pct is not none %}
     <div class="fund-strip">
       {% if card.pe_ratio %}
-      <span class="fitem">P/E <strong>{{ card.pe_ratio }}</strong></span>
+      <span class="fund-pill">P/E <strong>{{ card.pe_ratio }}</strong></span>
       {% endif %}
       {% if card.eps_growth_pct is not none %}
-      <span class="fitem">EPS growth <strong>{{ '%+.1f'|format(card.eps_growth_pct) }}%</strong></span>
+      <span class="fund-pill">EPS growth <strong>{{ '%+.1f'|format(card.eps_growth_pct) }}%</strong></span>
       {% endif %}
       {% if card.analyst_target_mean %}
-      <span class="fitem">Analyst target <strong>{{ '%.2f'|format(card.analyst_target_mean) }}</strong>
-        {% if card.analyst_consensus %}<em>({{ card.analyst_consensus | upper }})</em>{% endif %}
+      <span class="fund-pill">
+        Analyst <strong>{{ '%.2f'|format(card.analyst_target_mean) }}</strong>
+        {% if card.analyst_consensus %}<em style="color:var(--muted)"> {{ card.analyst_consensus | upper }}</em>{% endif %}
       </span>
       {% endif %}
       {% if card.next_earnings %}
-      <span class="fitem">Earnings <strong>{{ card.next_earnings }}</strong></span>
+      <span class="fund-pill">Earnings <strong>{{ card.next_earnings }}</strong></span>
       {% endif %}
     </div>
     {% endif %}
 
+    <!-- Body: reasoning + sentiment + tag groups -->
     <div class="card-body">
       <div class="reasoning">{{ card.reasoning or '' }}</div>
 
@@ -275,41 +531,66 @@
       <div class="news-summary">{{ card.news_summary or '' }}</div>
       {% endif %}
 
-      <div class="three-col">
-        <div>
-          <div class="col-head cat">Catalysts</div>
-          <ul class="col-list">{% for c in (card.catalysts or [])[:3] %}<li>{{ c }}</li>{% endfor %}</ul>
+      <div class="tag-groups">
+        {% if card.catalysts %}
+        <div class="tag-group-row">
+          <span class="tag-group-label cat">Catalysts</span>
+          {% for c in (card.catalysts or [])[:3] %}
+          <span class="tag-pill cat">{{ c }}</span>
+          {% endfor %}
         </div>
-        <div>
-          <div class="col-head risk">Risks</div>
-          <ul class="col-list">{% for r in (card.risks or [])[:3] %}<li>{{ r }}</li>{% endfor %}</ul>
+        {% endif %}
+        {% if card.risks %}
+        <div class="tag-group-row">
+          <span class="tag-group-label risk">Risks</span>
+          {% for r in (card.risks or [])[:3] %}
+          <span class="tag-pill risk">{{ r }}</span>
+          {% endfor %}
         </div>
-        <div>
-          <div class="col-head worry">Worries</div>
-          <ul class="col-list">{% for w in (card.worries or [])[:3] %}<li>{{ w }}</li>{% endfor %}</ul>
+        {% endif %}
+        {% if card.worries %}
+        <div class="tag-group-row">
+          <span class="tag-group-label worry">Worries</span>
+          {% for w in (card.worries or [])[:3] %}
+          <span class="tag-pill worry">{{ w }}</span>
+          {% endfor %}
         </div>
+        {% endif %}
       </div>
     </div>
 
+    <!-- Target / outlook footer bar -->
     {% if card.price_target_30d %}
     <div class="target-bar">
-      <span>Target:</span>
-      <strong>{{ '%.2f'|format(card.price_target_30d) }}</strong>
-      <span>Range:</span>
-      <strong>{{ '%.2f'|format(card.price_target_lo or 0) }} – {{ '%.2f'|format(card.price_target_hi or 0) }}</strong>
-      <span>90d:</span>
-      <strong>{{ card.outlook_90d or '' }}</strong>
-    </div>
-    {% endif %}
-
-    {% if hn %}
-    <div class="handoff-bar">
-      <span><span class="hb-label">🧠</span> {{ hn.thesis_summary or '' }}</span>
-      {% if hn.watch_items %}
-      <span>👁 {{ hn.watch_items | join(' · ') }}</span>
+      <div class="tb-item">
+        <span class="tb-label">Target</span>
+        <span class="tb-val">{{ '%.2f'|format(card.price_target_30d) }}</span>
+      </div>
+      <div class="tb-item">
+        <span class="tb-label">Range</span>
+        <span class="tb-val">{{ '%.2f'|format(card.price_target_lo or 0) }} – {{ '%.2f'|format(card.price_target_hi or 0) }}</span>
+      </div>
+      {% if card.outlook_90d %}
+      <div class="tb-item">
+        <span class="tb-label">90d</span>
+        <span class="tb-val">{{ card.outlook_90d }}</span>
+      </div>
       {% endif %}
     </div>
     {% endif %}
+
+    <!-- Handoff / memory strip -->
+    {% if hn %}
+    <div class="handoff-bar">
+      <div class="handoff-thesis">
+        <span class="handoff-label">🧠</span>{{ hn.thesis_summary or '' }}
+      </div>
+      {% if hn.watch_items %}
+      <div class="handoff-watch">👁 {{ hn.watch_items | join(' · ') }}</div>
+      {% endif %}
+    </div>
+    {% endif %}
+
   </div>
   {% endfor %}
 </div>
@@ -317,7 +598,7 @@
 <script>
   let polling = false;
 
-  // ── Summary ──────────────────────────────────────────────────────────────────
+  // ── Summary ────────────────────────────────────────────────────────────────
   async function loadSummary() {
     try {
       const r = await fetch('/api/dashboard');
@@ -328,9 +609,9 @@
       const pnlEl  = document.getElementById('s-pnl');
       const pctEl  = document.getElementById('s-pnl-pct');
       pnlEl.textContent  = (s.total_pnl >= 0 ? '+' : '') + '£' + fmtNum(Math.abs(s.total_pnl));
-      pnlEl.className    = 'value ' + (s.total_pnl >= 0 ? 'pos' : 'neg');
+      pnlEl.className    = 's-value ' + (s.total_pnl >= 0 ? 'pos' : 'neg');
       pctEl.textContent  = (s.total_pnl_pct >= 0 ? '+' : '') + s.total_pnl_pct + '%';
-      pctEl.className    = 'value ' + (s.total_pnl_pct >= 0 ? 'pos' : 'neg');
+      pctEl.className    = 's-value ' + (s.total_pnl_pct >= 0 ? 'pos' : 'neg');
       document.getElementById('s-count').textContent = s.position_count;
     } catch(e) {}
   }
@@ -340,7 +621,7 @@
     return Math.abs(n) >= 1000 ? (Math.abs(n)/1000).toFixed(1)+'k' : Math.abs(n).toFixed(2);
   }
 
-  // ── Status polling ────────────────────────────────────────────────────────────
+  // ── Status polling ──────────────────────────────────────────────────────────
   async function pollStatus() {
     try {
       const r = await fetch('/api/status');
@@ -391,7 +672,7 @@
     }
   }
 
-  // ── Sparklines ────────────────────────────────────────────────────────────────
+  // ── Sparklines ──────────────────────────────────────────────────────────────
   const REC_COLOURS = {
     BUY: '#2196f3', SELL: '#ef5350',
     HOLD_LONG: '#4caf50', HOLD_SHORT: '#ff9800',
@@ -461,5 +742,4 @@
   loadSummary();
   pollStatus();
 </script>
-</body>
-</html>
+{% endblock %}

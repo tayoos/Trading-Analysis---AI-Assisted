@@ -1,258 +1,330 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Sync — Stock Analyzer</title>
-  <style>
-    :root{--bg:#0f1117;--surface:#1a1d2e;--surface2:#242740;--border:#2d3156;
-          --text:#e2e4f0;--muted:#7b7fa8;--buy:#2196f3;--pos:#4caf50;--neg:#ef5350;
-          --warn:#ff9800;--alert:#f44336}
-    *{box-sizing:border-box;margin:0;padding:0}
-    body{background:var(--bg);color:var(--text);font-family:system-ui,sans-serif;font-size:14px}
-    a{color:var(--buy);text-decoration:none}a:hover{text-decoration:underline}
-    nav{background:var(--surface);border-bottom:1px solid var(--border);padding:12px 24px;
-        display:flex;align-items:center;gap:24px}
-    nav .logo{font-weight:700;font-size:16px}
-    nav a{color:var(--muted);font-size:13px}
-    .page{padding:24px;max-width:900px}
-    h1{font-size:20px;margin-bottom:16px}
-    .section{background:var(--surface);border:1px solid var(--border);border-radius:10px;
-             padding:16px;margin-bottom:16px}
-    .section h2{font-size:14px;color:var(--muted);text-transform:uppercase;
-                letter-spacing:.4px;margin-bottom:12px}
-    .status-row{display:flex;align-items:center;gap:16px;margin-bottom:16px}
-    .dot{width:8px;height:8px;border-radius:50%;background:var(--pos)}
-    .dot.off{background:var(--neg)}
-    button{cursor:pointer;border:none;border-radius:6px;padding:8px 16px;
-           font-size:13px;font-weight:600;background:var(--buy);color:#fff}
-    button:hover{opacity:.85}button:disabled{opacity:.4}
-    button.secondary{background:var(--surface2);border:1px solid var(--border)}
-    button.warn-btn{background:var(--warn)}
-    table{width:100%;border-collapse:collapse}
-    th{background:var(--surface2);padding:8px 12px;text-align:left;font-size:11px;
-       text-transform:uppercase;letter-spacing:.4px;color:var(--muted)}
-    td{padding:8px 12px;border-top:1px solid var(--border)}
-    .buy{color:var(--pos)}.sell{color:var(--neg)}
-    .empty{color:var(--muted);padding:20px 0}
-    /* Key rotation */
-    .key-card{background:var(--surface2);border-radius:8px;padding:14px 16px;
-              margin-bottom:10px;display:flex;align-items:flex-start;gap:12px}
-    .key-card:last-child{margin-bottom:0}
-    .key-badge{display:inline-flex;align-items:center;gap:6px;
-               border-radius:4px;padding:3px 8px;font-size:11px;font-weight:700}
-    .key-badge.ok{background:rgba(76,175,80,.15);color:#4caf50;border:1px solid #4caf50}
-    .key-badge.warn{background:rgba(255,152,0,.15);color:var(--warn);border:1px solid var(--warn)}
-    .key-badge.alert{background:rgba(244,67,54,.15);color:var(--alert);border:1px solid var(--alert)}
-    .key-badge.info{background:rgba(33,150,243,.15);color:var(--buy);border:1px solid var(--buy)}
-    .key-info{flex:1}
-    .key-info strong{display:block;margin-bottom:4px}
-    .key-info p{color:var(--muted);font-size:12px;line-height:1.4;margin-bottom:8px}
-    /* Backup */
-    .backup-meta{display:flex;gap:24px;flex-wrap:wrap;margin-bottom:14px}
-    .backup-meta span{color:var(--muted);font-size:12px}
-    .backup-meta strong{color:var(--text)}
-    .dest-ok{color:var(--pos)}
-    .dest-err{color:var(--neg)}
-  </style>
-</head>
-<body>
-<nav>
-  <span class="logo">📈 Stock Analyzer</span>
-  <a href="/">Dashboard</a>
-  <a href="/history">History</a>
-  <a href="/sync">Sync</a>
-</nav>
-<div class="page">
-  <h1>Trading 212 Sync</h1>
+{% extends "base.html" %}
 
+{% block title %}Sync — StockAnalyser{% endblock %}
+
+{% block head %}
+<style>
+  /* ── Sync-specific styles ────────────────────────────────────────── */
+  .page {
+    max-width: 860px;
+  }
+
+  .page-title {
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--text);
+    margin-bottom: 20px;
+  }
+
+  /* status indicator dot */
+  .status-dot {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--pos);
+    margin-right: 8px;
+    flex-shrink: 0;
+  }
+
+  .status-dot.off {
+    background: var(--neg);
+  }
+
+  .status-row {
+    display: flex;
+    align-items: center;
+    margin-bottom: 12px;
+  }
+
+  .status-meta {
+    font-size: 12px;
+    color: var(--muted);
+    margin-bottom: 14px;
+  }
+
+  .inline-msg {
+    margin-left: 12px;
+    font-size: 12px;
+    color: var(--muted);
+  }
+
+  /* backup meta row */
+  .backup-meta {
+    display: flex;
+    gap: 24px;
+    flex-wrap: wrap;
+    margin-bottom: 16px;
+  }
+
+  .backup-meta-item {
+    font-size: 12px;
+    color: var(--muted);
+  }
+
+  .backup-meta-item strong {
+    color: var(--text);
+  }
+
+  .dest-ok  { color: var(--pos); }
+  .dest-err { color: var(--neg); }
+
+  /* key rotation cards */
+  .key-card {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px;
+    margin-bottom: 10px;
+  }
+
+  .key-card:last-child {
+    margin-bottom: 0;
+  }
+
+  .key-card-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 6px;
+  }
+
+  .key-card-header strong {
+    font-size: 14px;
+    font-weight: 600;
+  }
+
+  .key-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    border-radius: 4px;
+    padding: 2px 8px;
+    font-size: 11px;
+    font-weight: 700;
+  }
+
+  .key-badge.ok    { background: rgba(76,175,80,.15);  color: #4caf50; border: 1px solid rgba(76,175,80,.3); }
+  .key-badge.warn  { background: rgba(255,152,0,.15);  color: #ff9800; border: 1px solid rgba(255,152,0,.3); }
+  .key-badge.alert { background: rgba(244,67,54,.15);  color: #f44336; border: 1px solid rgba(244,67,54,.3); }
+  .key-badge.info  { background: rgba(33,150,243,.15); color: var(--buy); border: 1px solid rgba(33,150,243,.3); }
+
+  .key-card p {
+    font-size: 12px;
+    color: var(--muted);
+    line-height: 1.5;
+    margin-bottom: 6px;
+  }
+
+  .key-hint {
+    font-size: 11px;
+    color: var(--muted);
+    margin-bottom: 10px;
+    line-height: 1.4;
+  }
+
+  .key-card-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  /* table inside sections */
+  .section table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 4px;
+  }
+
+  .section table th {
+    background: var(--surface2);
+    padding: 9px 12px;
+    text-align: left;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    color: var(--muted);
+  }
+
+  .section table td {
+    padding: 9px 12px;
+    border-top: 1px solid var(--border);
+    font-size: 13px;
+  }
+
+  .section table tbody tr:hover td {
+    background: var(--surface2);
+  }
+
+  .table-empty {
+    font-size: 13px;
+    color: var(--muted);
+    padding: 16px 0;
+  }
+
+  .trade-buy  { color: var(--pos); font-weight: 600; }
+  .trade-sell { color: var(--neg); font-weight: 600; }
+
+  .section-intro {
+    font-size: 12px;
+    color: var(--muted);
+    margin-bottom: 14px;
+    line-height: 1.5;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page">
+  <h1 class="page-title">Sync &amp; Data</h1>
+
+  <!-- T212 Sync -->
   <div class="section">
-    <h2>Status</h2>
+    <div class="section-title">Trading 212 Sync</div>
+
     <div class="status-row">
-      <div class="dot {{ '' if t212_available else 'off' }}"></div>
-      <span>{{ 'Connected' if t212_available else 'No API key configured (set TRADING212_API_KEY)' }}</span>
+      <span class="status-dot {{ '' if t212_available else 'off' }}"></span>
+      <span>{{ 'Connected' if t212_available else 'No API key configured — set TRADING212_API_KEY' }}</span>
     </div>
-    <p style="color:var(--muted);font-size:12px;margin-bottom:12px">
-      Last sync: {{ last_sync[:19].replace('T',' ') if last_sync else 'Never' }}
-    </p>
-    <button id="sync-btn" onclick="doSync()" {{ 'disabled' if not t212_available }}>
-      Sync Now
-    </button>
-    <span id="sync-msg" style="margin-left:12px;font-size:12px;color:var(--muted)"></span>
+
+    <div class="status-meta">
+      Last sync: {{ last_sync[:19].replace('T', ' ') if last_sync else 'Never' }}
+    </div>
+
+    <div style="display:flex;align-items:center;gap:10px">
+      <button class="btn-primary" id="sync-btn" onclick="doSync()" {{ 'disabled' if not t212_available }}>
+        Sync Trading 212
+      </button>
+      <span id="sync-msg" class="inline-msg"></span>
+    </div>
   </div>
 
+  <!-- Trade History -->
   <div class="section">
-    <h2>Recent trades (last 50)</h2>
+    <div class="section-title">Recent Trades (last 50)</div>
     {% if trades %}
     <table>
       <thead>
-        <tr><th>Date</th><th>Ticker</th><th>Action</th>
-            <th>Qty</th><th>Price</th><th>Total</th></tr>
+        <tr>
+          <th>Date</th>
+          <th>Ticker</th>
+          <th>Action</th>
+          <th>Qty</th>
+          <th>Price</th>
+          <th>Total</th>
+        </tr>
       </thead>
       <tbody>
-      {% for t in trades %}
+        {% for t in trades %}
         <tr>
           <td>{{ (t.traded_at or '')[:10] }}</td>
           <td>{{ t.ticker }}</td>
-          <td class="{{ 'buy' if t.action == 'BUY' else 'sell' }}">{{ t.action }}</td>
+          <td class="{{ 'trade-buy' if t.action == 'BUY' else 'trade-sell' }}">{{ t.action }}</td>
           <td>{{ t.quantity }}</td>
           <td>{{ '%.4f'|format(t.price) }}</td>
           <td>{{ '%.2f'|format(t.total_value) }}</td>
         </tr>
-      {% endfor %}
+        {% endfor %}
       </tbody>
     </table>
     {% else %}
-    <p class="empty">No trades imported yet.</p>
+    <p class="table-empty">No trades imported yet.</p>
     {% endif %}
   </div>
 
+  <!-- Closed positions -->
   {% if owned_history %}
   <div class="section">
-    <h2>Closed positions</h2>
+    <div class="section-title">Closed Positions</div>
     <table>
       <thead>
-        <tr><th>Ticker</th><th>First Bought</th><th>Sold</th>
-            <th>Avg Cost</th><th>Realised P&L</th></tr>
+        <tr>
+          <th>Ticker</th>
+          <th>First Bought</th>
+          <th>Sold</th>
+          <th>Avg Cost</th>
+          <th>Realised P&amp;L</th>
+        </tr>
       </thead>
       <tbody>
-      {% for o in owned_history %}
+        {% for o in owned_history %}
         <tr>
           <td>{{ o.ticker }}</td>
           <td>{{ (o.first_bought or '')[:10] }}</td>
           <td>{{ (o.fully_sold_at or '')[:10] }}</td>
           <td>{{ '%.4f'|format(o.avg_cost) if o.avg_cost else '—' }}</td>
-          <td style="color:{{ '#4caf50' if (o.realised_pl or 0) >= 0 else '#ef5350' }}">
+          <td class="{{ 'pos' if (o.realised_pl or 0) >= 0 else 'neg' }}">
             {{ ('%+.2f'|format(o.realised_pl)) if o.realised_pl is not none else '—' }}
           </td>
         </tr>
-      {% endfor %}
+        {% endfor %}
       </tbody>
     </table>
   </div>
   {% endif %}
 
+  <!-- Dividend Summary -->
   {% if dividend_summary %}
   <div class="section">
-    <h2>Dividends received (all time)</h2>
+    <div class="section-title">Dividends — All Time Summary</div>
     <table>
       <thead>
-        <tr><th>Ticker</th><th>Total Received</th><th>Payments</th><th>Last Paid</th></tr>
+        <tr>
+          <th>Ticker</th>
+          <th>Total Received</th>
+          <th>Payments</th>
+          <th>Last Paid</th>
+        </tr>
       </thead>
       <tbody>
-      {% for d in dividend_summary %}
+        {% for d in dividend_summary %}
         <tr>
           <td>{{ d.ticker }}</td>
-          <td style="color:#4caf50">£{{ '%.2f'|format(d.total_received) }}</td>
+          <td class="pos">£{{ '%.2f'|format(d.total_received) }}</td>
           <td>{{ d.payment_count }}</td>
           <td>{{ (d.last_paid or '')[:10] }}</td>
         </tr>
-      {% endfor %}
+        {% endfor %}
       </tbody>
     </table>
   </div>
   {% endif %}
 
+  <!-- Recent dividend payments -->
   {% if dividends %}
   <div class="section">
-    <h2>Recent dividend payments</h2>
+    <div class="section-title">Recent Dividend Payments</div>
     <table>
       <thead>
-        <tr><th>Date</th><th>Ticker</th><th>Amount</th><th>Shares at payment</th></tr>
+        <tr>
+          <th>Date</th>
+          <th>Ticker</th>
+          <th>Amount</th>
+          <th>Shares at payment</th>
+        </tr>
       </thead>
       <tbody>
-      {% for d in dividends %}
+        {% for d in dividends %}
         <tr>
           <td>{{ (d.paid_at or '')[:10] }}</td>
           <td>{{ d.ticker }}</td>
-          <td style="color:#4caf50">£{{ '%.4f'|format(d.amount) }}</td>
+          <td class="pos">£{{ '%.4f'|format(d.amount) }}</td>
           <td>{{ d.shares_held or '—' }}</td>
         </tr>
-      {% endfor %}
+        {% endfor %}
       </tbody>
     </table>
   </div>
   {% endif %}
 
-  {# ── API Key Rotation ─────────────────────────────────────────────────────── #}
-  <div class="section" id="key-rotation">
-    <h2>API Key Rotation</h2>
-    <p style="color:var(--muted);font-size:12px;margin-bottom:14px">
-      Rotating API keys regularly limits exposure if a key is ever leaked.
-      After rotating a key in the provider dashboard, click "Mark as rotated" to reset the timer.
-    </p>
-
-    {% set kw_map = {} %}
-    {% for w in key_warnings %}{% set _ = kw_map.update({w.key: w}) %}{% endfor %}
-
-    {# T212 key #}
-    {% set t212_w = kw_map.get('t212') %}
-    <div class="key-card">
-      <div class="key-info">
-        <strong>Trading 212 API Key</strong>
-        {% if t212_w %}
-          <span class="key-badge {{ t212_w.level }}">
-            {% if t212_w.level == 'alert' %}⚠ OVERDUE
-            {% elif t212_w.level == 'warn' %}⚠ DUE SOON
-            {% else %}ℹ NOT RECORDED{% endif %}
-          </span>
-          <p style="margin-top:6px">{{ t212_w.message }}</p>
-        {% else %}
-          <span class="key-badge ok">✓ OK</span>
-          <p style="margin-top:6px;color:var(--muted);font-size:12px">
-            {% if key_ages and key_ages.get('t212_key_rotated_at') is not none %}
-              Last rotated {{ key_ages.get('t212_key_rotated_at') }} days ago.
-            {% else %}Rotation date recorded.{% endif %}
-          </p>
-        {% endif %}
-        <p style="color:var(--muted);font-size:11px;margin-top:4px">
-          Rotate at: T212 → Settings → API (read-only key — worst case is data exposure, not financial loss).
-        </p>
-        <button class="warn-btn" onclick="markRotated('t212', this)" style="margin-top:8px">
-          Mark as rotated
-        </button>
-        <span class="rot-msg" id="rot-t212" style="margin-left:10px;font-size:12px;color:var(--muted)"></span>
-      </div>
-    </div>
-
-    {# Anthropic key #}
-    {% set anth_w = kw_map.get('anthropic') %}
-    <div class="key-card">
-      <div class="key-info">
-        <strong>Anthropic API Key</strong>
-        {% if anth_w %}
-          <span class="key-badge {{ anth_w.level }}">
-            {% if anth_w.level == 'alert' %}⚠ OVERDUE
-            {% elif anth_w.level == 'warn' %}⚠ DUE SOON
-            {% else %}ℹ NOT RECORDED{% endif %}
-          </span>
-          <p style="margin-top:6px">{{ anth_w.message }}</p>
-        {% else %}
-          <span class="key-badge ok">✓ OK</span>
-          <p style="margin-top:6px;color:var(--muted);font-size:12px">
-            {% if key_ages and key_ages.get('anthropic_key_rotated_at') is not none %}
-              Last rotated {{ key_ages.get('anthropic_key_rotated_at') }} days ago.
-            {% else %}Rotation date recorded.{% endif %}
-          </p>
-        {% endif %}
-        <p style="color:var(--muted);font-size:11px;margin-top:4px">
-          Rotate at: console.anthropic.com → API Keys.
-          Remember to update ANTHROPIC_API_KEY in your .env and restart the container.
-        </p>
-        <button class="warn-btn" onclick="markRotated('anthropic', this)" style="margin-top:8px">
-          Mark as rotated
-        </button>
-        <span class="rot-msg" id="rot-anthropic" style="margin-left:10px;font-size:12px;color:var(--muted)"></span>
-      </div>
-    </div>
-  </div>
-
-  {# ── Backup ───────────────────────────────────────────────────────────────── #}
+  <!-- Backups -->
   <div class="section">
-    <h2>Backups</h2>
+    <div class="section-title">Backups</div>
 
     <div class="backup-meta">
-      <span>Destination:
+      <div class="backup-meta-item">
+        Destination:
         {% if backup_configured %}
           {% if backup_reachable %}
             <strong class="dest-ok">Reachable</strong>
@@ -262,39 +334,132 @@
         {% else %}
           <strong style="color:var(--muted)">Not configured (set BACKUP_PATH in .env)</strong>
         {% endif %}
-      </span>
-      <span>Last backup:
-        <strong>{{ last_backup[:19].replace('T',' ') if last_backup else 'Never' }}</strong>
-      </span>
-      <span>Retention: <strong>{{ backup_retain_days }} days</strong></span>
+      </div>
+      <div class="backup-meta-item">
+        Last backup: <strong>{{ last_backup[:19].replace('T', ' ') if last_backup else 'Never' }}</strong>
+      </div>
+      <div class="backup-meta-item">
+        Retention: <strong>{{ backup_retain_days }} days</strong>
+      </div>
     </div>
 
-    <button id="backup-btn"
-            onclick="doBackup()"
-            {{ 'disabled' if not backup_configured or not backup_reachable }}>
-      Run backup now
-    </button>
-    <span id="backup-msg" style="margin-left:12px;font-size:12px;color:var(--muted)"></span>
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+      <button class="btn-secondary" id="backup-btn" onclick="doBackup()"
+              {{ 'disabled' if not backup_configured or not backup_reachable }}>
+        Run Backup Now
+      </button>
+      <span id="backup-msg" class="inline-msg"></span>
+    </div>
 
     {% if backup_list %}
-    <table style="margin-top:14px">
+    <table>
       <thead>
-        <tr><th>Timestamp</th><th>Size</th><th>Created</th></tr>
+        <tr>
+          <th>Timestamp</th>
+          <th>Size</th>
+          <th>Created</th>
+        </tr>
       </thead>
       <tbody>
-      {% for b in backup_list %}
+        {% for b in backup_list %}
         <tr>
-          <td style="font-family:monospace">{{ b.timestamp }}</td>
+          <td style="font-family:monospace;font-size:12px">{{ b.timestamp }}</td>
           <td>{{ b.size_kb }} KB</td>
-          <td>{{ b.created_at[:19].replace('T',' ') }}</td>
+          <td>{{ b.created_at[:19].replace('T', ' ') }}</td>
         </tr>
-      {% endfor %}
+        {% endfor %}
       </tbody>
     </table>
     {% elif backup_configured %}
-    <p class="empty" style="margin-top:14px">No backups found yet.</p>
+    <p class="table-empty">No backups found yet.</p>
     {% endif %}
   </div>
+
+  <!-- API Key Rotation -->
+  <div class="section" id="key-rotation">
+    <div class="section-title">API Key Rotation</div>
+    <p class="section-intro">
+      Rotating API keys regularly limits exposure if a key is ever leaked.
+      After rotating a key in the provider's dashboard, click "Mark as rotated" to reset the timer.
+    </p>
+
+    {% set kw_map = {} %}
+    {% for w in key_warnings %}{% set _ = kw_map.update({w.key: w}) %}{% endfor %}
+
+    <!-- T212 key -->
+    {% set t212_w = kw_map.get('t212') %}
+    <div class="key-card">
+      <div class="key-card-header">
+        <strong>Trading 212 API Key</strong>
+        {% if t212_w %}
+          <span class="key-badge {{ t212_w.level }}">
+            {% if t212_w.level == 'alert' %}⚠ OVERDUE
+            {% elif t212_w.level == 'warn' %}⚠ DUE SOON
+            {% else %}ℹ NOT RECORDED{% endif %}
+          </span>
+        {% else %}
+          <span class="key-badge ok">✓ OK</span>
+        {% endif %}
+      </div>
+
+      {% if t212_w %}
+        <p>{{ t212_w.message }}</p>
+      {% else %}
+        <p>
+          {% if key_ages and key_ages.get('t212_key_rotated_at') is not none %}
+            Last rotated {{ key_ages.get('t212_key_rotated_at') }} days ago.
+          {% else %}Rotation date recorded.{% endif %}
+        </p>
+      {% endif %}
+
+      <p class="key-hint">
+        Rotate at: T212 → Settings → API (read-only key — worst case is data exposure, not financial loss).
+      </p>
+
+      <div class="key-card-actions">
+        <button class="btn-warn" onclick="markRotated('t212', this)">Mark as rotated</button>
+        <span class="rot-msg" id="rot-t212" style="font-size:12px;color:var(--muted)"></span>
+      </div>
+    </div>
+
+    <!-- Anthropic key -->
+    {% set anth_w = kw_map.get('anthropic') %}
+    <div class="key-card">
+      <div class="key-card-header">
+        <strong>Anthropic API Key</strong>
+        {% if anth_w %}
+          <span class="key-badge {{ anth_w.level }}">
+            {% if anth_w.level == 'alert' %}⚠ OVERDUE
+            {% elif anth_w.level == 'warn' %}⚠ DUE SOON
+            {% else %}ℹ NOT RECORDED{% endif %}
+          </span>
+        {% else %}
+          <span class="key-badge ok">✓ OK</span>
+        {% endif %}
+      </div>
+
+      {% if anth_w %}
+        <p>{{ anth_w.message }}</p>
+      {% else %}
+        <p>
+          {% if key_ages and key_ages.get('anthropic_key_rotated_at') is not none %}
+            Last rotated {{ key_ages.get('anthropic_key_rotated_at') }} days ago.
+          {% else %}Rotation date recorded.{% endif %}
+        </p>
+      {% endif %}
+
+      <p class="key-hint">
+        Rotate at: console.anthropic.com → API Keys.
+        Remember to update ANTHROPIC_API_KEY in your .env and restart the container.
+      </p>
+
+      <div class="key-card-actions">
+        <button class="btn-warn" onclick="markRotated('anthropic', this)">Mark as rotated</button>
+        <span class="rot-msg" id="rot-anthropic" style="font-size:12px;color:var(--muted)"></span>
+      </div>
+    </div>
+  </div>
+
 </div>
 
 <script>
@@ -370,5 +535,4 @@ async function doBackup() {
   }
 }
 </script>
-</body>
-</html>
+{% endblock %}

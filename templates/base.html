@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}StockAnalyser{% endblock %}</title>
+  {% block head %}{% endblock %}
+  <style>
+    :root {
+      --bg: #0f1117;
+      --surface: #1a1d2e;
+      --surface2: #242740;
+      --border: #2d3156;
+      --text: #e2e4f0;
+      --muted: #7b7fa8;
+      --buy: #2196f3;
+      --hold: #78909c;
+      --sell: #ef5350;
+      --hold-long: #4caf50;
+      --hold-short: #ff9800;
+      --watch: #9c27b0;
+      --pos: #4caf50;
+      --neg: #ef5350;
+      --neu: #78909c;
+      --radius: 10px;
+      --gap: 14px;
+    }
+
+    *, *::before, *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: system-ui, -apple-system, sans-serif;
+      font-size: 14px;
+      line-height: 1.5;
+      min-height: 100vh;
+    }
+
+    a {
+      color: var(--buy);
+      text-decoration: none;
+    }
+
+    a:hover {
+      text-decoration: underline;
+    }
+
+    /* ── Nav ─────────────────────────────────────────────────────────── */
+    nav {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 0 24px;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      height: 52px;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+
+    .nav-logo {
+      font-weight: 700;
+      font-size: 15px;
+      color: var(--text);
+      margin-right: 16px;
+      white-space: nowrap;
+      text-decoration: none;
+    }
+
+    .nav-logo:hover {
+      text-decoration: none;
+    }
+
+    .nav-links {
+      display: flex;
+      align-items: center;
+      gap: 2px;
+      flex: 1;
+    }
+
+    .nav-links a {
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 500;
+      padding: 6px 12px;
+      border-radius: 6px;
+      transition: color 0.15s, background 0.15s;
+      text-decoration: none;
+    }
+
+    .nav-links a:hover {
+      color: var(--text);
+      background: var(--surface2);
+      text-decoration: none;
+    }
+
+    .nav-links a.active {
+      color: var(--text);
+      background: var(--surface2);
+      border-bottom: 2px solid var(--buy);
+      border-radius: 6px 6px 0 0;
+    }
+
+    .nav-right {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    /* ── Page wrapper ─────────────────────────────────────────────────── */
+    .page {
+      padding: 24px;
+      max-width: 1100px;
+    }
+
+    /* ── Section cards ────────────────────────────────────────────────── */
+    .section {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px;
+      margin-bottom: 16px;
+    }
+
+    .section-title {
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+      margin-bottom: 16px;
+    }
+
+    /* ── Buttons ──────────────────────────────────────────────────────── */
+    button {
+      cursor: pointer;
+      border: none;
+      border-radius: 6px;
+      padding: 8px 16px;
+      font-size: 13px;
+      font-weight: 600;
+      font-family: inherit;
+      transition: opacity 0.15s, background 0.15s;
+      line-height: 1;
+    }
+
+    button:hover:not(:disabled) {
+      opacity: 0.85;
+    }
+
+    button:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+
+    .btn-primary {
+      background: var(--buy);
+      color: #fff;
+    }
+
+    .btn-secondary {
+      background: var(--surface2);
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+
+    .btn-warn {
+      background: var(--hold-short);
+      color: #000;
+    }
+
+    /* ── Badges (recommendation) ──────────────────────────────────────── */
+    .badge {
+      display: inline-block;
+      padding: 3px 10px;
+      border-radius: 20px;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.4px;
+      line-height: 1.4;
+    }
+
+    .badge-BUY        { background: var(--buy);        color: #fff; }
+    .badge-SELL       { background: var(--sell);       color: #fff; }
+    .badge-HOLD_LONG  { background: var(--hold-long);  color: #fff; }
+    .badge-HOLD_SHORT { background: var(--hold-short); color: #000; }
+    .badge-HOLD       { background: var(--hold);       color: #fff; }
+    .badge-WATCH      { background: var(--watch);      color: #fff; }
+
+    /* Status badges for history */
+    .badge-done    { background: rgba(76,175,80,.18);   color: var(--pos); }
+    .badge-error   { background: rgba(239,83,80,.18);   color: var(--neg); }
+    .badge-running { background: rgba(33,150,243,.18);  color: var(--buy); }
+
+    /* ── Tables ───────────────────────────────────────────────────────── */
+    .data-table {
+      width: 100%;
+      border-collapse: collapse;
+      background: var(--surface);
+      border-radius: var(--radius);
+      overflow: hidden;
+      border: 1px solid var(--border);
+    }
+
+    .data-table th {
+      background: var(--surface2);
+      padding: 10px 14px;
+      text-align: left;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--muted);
+    }
+
+    .data-table td {
+      padding: 10px 14px;
+      border-top: 1px solid var(--border);
+      font-size: 13px;
+    }
+
+    .data-table tbody tr:hover td {
+      background: var(--surface2);
+    }
+
+    /* ── Colour utilities ─────────────────────────────────────────────── */
+    .pos   { color: var(--pos); }
+    .neg   { color: var(--neg); }
+    .neu   { color: var(--neu); }
+    .muted { color: var(--muted); }
+
+    /* ── Empty state ──────────────────────────────────────────────────── */
+    .empty-state {
+      text-align: center;
+      padding: 64px 24px;
+      color: var(--muted);
+    }
+
+    .empty-state h2 {
+      font-size: 18px;
+      color: var(--text);
+      margin-bottom: 8px;
+    }
+
+    .empty-state p {
+      font-size: 13px;
+      max-width: 420px;
+      margin: 0 auto;
+    }
+
+    /* ── Spinner ──────────────────────────────────────────────────────── */
+    .spinner {
+      width: 14px;
+      height: 14px;
+      border: 2px solid var(--border);
+      border-top-color: var(--buy);
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      flex-shrink: 0;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+  </style>
+</head>
+<body>
+
+<nav>
+  <a href="/" class="nav-logo">📈 StockAnalyser</a>
+  <div class="nav-links">
+    <a href="/" {% if active_page == 'dashboard' %}class="active"{% endif %}>Dashboard</a>
+    <a href="/history" {% if active_page == 'history' %}class="active"{% endif %}>History</a>
+    <a href="/sync" {% if active_page == 'sync' %}class="active"{% endif %}>Sync</a>
+  </div>
+  <div class="nav-right">
+    {% block nav_right %}{% endblock %}
+  </div>
+</nav>
+
+{% block content %}{% endblock %}
+
+</body>
+</html>
