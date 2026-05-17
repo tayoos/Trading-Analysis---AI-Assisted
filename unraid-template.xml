@@ -102,4 +102,25 @@
           Description="Cost basis calculation method: AVCO (average cost, default) or FIFO."
           Type="Variable" Display="advanced" Required="false" Mask="false">AVCO</Config>
 
+  <!-- ── Traefik (optional — only needed if using Traefik as reverse proxy) ── -->
+  <Config Name="Traefik Enable" Target="traefik.enable" Default="true"
+          Description="Set to true to expose this container via Traefik."
+          Type="Label" Display="advanced" Required="false" Mask="false">true</Config>
+
+  <Config Name="Traefik Rule" Target="traefik.http.routers.stanalyser.rule" Default=""
+          Description="Traefik routing rule. Example: Host(`stockanalyser.yourdomain.com`)"
+          Type="Label" Display="advanced" Required="false" Mask="false"/>
+
+  <Config Name="Traefik EntryPoints" Target="traefik.http.routers.stanalyser.entryPoints" Default="https"
+          Description="Traefik entrypoints. Usually 'https' or 'web,websecure'."
+          Type="Label" Display="advanced" Required="false" Mask="false">https</Config>
+
+  <Config Name="Traefik TLS" Target="traefik.http.routers.stanalyser.tls.certresolver" Default="cloudflare"
+          Description="TLS cert resolver name configured in your Traefik instance."
+          Type="Label" Display="advanced" Required="false" Mask="false">cloudflare</Config>
+
+  <Config Name="Traefik Port" Target="traefik.http.services.stanalyser.loadbalancer.server.port" Default="8765"
+          Description="Internal container port Traefik forwards to. Must match PORT variable (default 8765)."
+          Type="Label" Display="advanced" Required="false" Mask="false">8765</Config>
+
 </Container>
