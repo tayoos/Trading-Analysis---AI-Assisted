@@ -217,20 +217,13 @@ def _sync_job(app: Flask, t212: T212DataSource, portfolio: PortfolioManager) -> 
     with app.app_context():
         logger.info("Running scheduled T212 sync")
         try:
+            from datetime import datetime, timezone
             db = app.extensions["db"]
 
-            last = db.get_last_sync_time()
-            orders = t212.get_orders(since=last)
-            from .sources.base import Trade
-            trades = [
-                Trade(
-                    order_id=o.order_id, ticker=o.ticker, action=o.action,
-                    quantity=o.quantity, price=o.price, total_value=o.total_value,
-                    traded_at=o.traded_at,
-                )
-                for o in orders
-            ]
-            portfolio.apply_trades(trades)
+            since = db.get_latest_trade_time()
+            logger.info("Scheduled sync — most recent trade: %s", since or "none (full history fetch)")
+            orders = t212.get_orders(since=since)
+            portfolio.apply_trades(orders)
 
             existing = db.get_dividends(limit=1)
             last_div = existing[0]["paid_at"] if existing else None
@@ -238,6 +231,9 @@ def _sync_job(app: Flask, t212: T212DataSource, portfolio: PortfolioManager) -> 
             if new_divs:
                 saved = db.save_dividends(new_divs)
                 logger.info("Saved %d new dividend payments", saved)
+
+            db.set_setting("t212_last_synced_at", datetime.now(timezone.utc).isoformat())
+            logger.info("Scheduled T212 sync complete")
         except Exception:
             logger.exception("Scheduled T212 sync failed")
 
