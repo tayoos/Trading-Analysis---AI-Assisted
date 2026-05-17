@@ -18,9 +18,11 @@ class Trade:
 class Position:
     ticker: str
     shares: float
-    avg_cost: float      # cost per share in account currency
-    current_price: Optional[float] = None   # from T212 when available
+    avg_cost: float      # per share, account currency (from wallet totalCost / qty)
+    current_price: Optional[float] = None   # per share, account currency
     instrument_name: Optional[str] = None
+    position_value: Optional[float] = None  # wallet currentValue (account currency)
+    unrealized_pnl: Optional[float] = None
 
 
 class DataSource(ABC):

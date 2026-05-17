@@ -819,8 +819,10 @@
   {% set has_price = price is not none and price > 0 %}
   {% set cost      = card.cost_basis or 0 %}
   {% set shares    = card.shares or 0 %}
-  {% set pnl_pct   = ((price - cost) / cost * 100) if (has_price and cost) else 0 %}
-  {% set pnl_abs   = (price - cost) * shares if has_price else 0 %}
+  {% set val       = card.position_value if card.position_value is not none else (price * shares if has_price else none) %}
+  {% set has_val   = val is not none and val > 0 %}
+  {% set pnl_abs   = card.unrealized_pnl if card.unrealized_pnl is not none else ((price - cost) * shares if (has_price and cost) else none) %}
+  {% set pnl_pct   = ((pnl_abs / (cost * shares)) * 100) if (pnl_abs is not none and cost and shares) else (((price - cost) / cost * 100) if (has_price and cost) else 0) %}
   {% set rec = card.recommendation or 'HOLD' %}
   {% set hn  = handoff_notes.get(ticker) %}
 
@@ -839,9 +841,9 @@
     </div>
 
     <div class="price-row">
-      <span class="price-val">{% if has_price %}£{{ '{:,.2f}'.format(price) }}{% else %}—{% endif %}</span>
-      <span class="pnl-pill {{ 'pos' if (has_price and cost and pnl_pct >= 0) else ('neg' if (has_price and cost and pnl_pct < 0) else 'neu') }}">
-        {{ '%+.1f'|format(pnl_pct) + '%' if (has_price and cost) else '—' }}
+      <span class="price-val">{% if has_price %}{% if price >= 1 %}£{{ '{:,.2f}'.format(price) }}{% elif price >= 0.01 %}£{{ '{:,.4f}'.format(price) }}{% else %}£{{ '{:,.6f}'.format(price) }}{% endif %}{% else %}—{% endif %}</span>
+      <span class="pnl-pill {{ 'pos' if (pnl_pct >= 0) else ('neg' if (has_price and cost) else 'neu') }}">
+        {{ '%+.1f'|format(pnl_pct) + '%' if (has_price and cost and cost > 0) else '—' }}
       </span>
     </div>
 
@@ -856,12 +858,11 @@
       </div>
       <div class="h-stat">
         <span class="h-lbl">P&amp;L</span>
-        <span class="h-val {{ 'pos' if pnl_abs >= 0 else 'neg' }}">{% if has_price and cost %}{{ '+£' if pnl_abs >= 0 else '-£' }}{{ '{:,.2f}'.format(pnl_abs|abs) }}{% else %}—{% endif %}</span>
+        <span class="h-val {{ 'pos' if pnl_abs is not none and pnl_abs >= 0 else ('neg' if pnl_abs is not none else '') }}">{% if pnl_abs is not none %}{{ '+£' if pnl_abs >= 0 else '-£' }}{{ '{:,.2f}'.format(pnl_abs|abs) }}{% else %}—{% endif %}</span>
       </div>
       <div class="h-stat">
         <span class="h-lbl">Value</span>
-        {% set val = price * shares if has_price else 0 %}
-        <span class="h-val">{% if has_price %}£{{ '{:,.0f}'.format(val) if val >= 10 else '{:,.2f}'.format(val) }}{% else %}—{% endif %}</span>
+        <span class="h-val">{% if has_val %}{% if val >= 10 %}£{{ '{:,.2f}'.format(val) }}{% else %}£{{ '{:,.2f}'.format(val) }}{% endif %}{% else %}—{% endif %}</span>
       </div>
     </div>
 

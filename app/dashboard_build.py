@@ -46,10 +46,20 @@ def build_card(
     if not card.get("cost_basis") and p:
         card["cost_basis"] = p.get("avg_cost")
         card["shares"] = p.get("shares")
-    if ticker in live_prices:
+    shares = float(card.get("shares") or p.get("shares") or 0)
+    if p.get("position_value") is not None:
+        card["position_value"] = float(p["position_value"])
+        if shares > 0:
+            card["current_price"] = card["position_value"] / shares
+            card["price_source"] = "t212"
+    if p.get("unrealized_pnl") is not None:
+        card["unrealized_pnl"] = float(p["unrealized_pnl"])
+
+    if ticker in live_prices and card.get("price_source") != "t212":
         card["current_price"] = live_prices[ticker]
         card["price_source"] = "market"
-    elif p.get("current_price"):
+        card.pop("position_value", None)
+    elif card.get("current_price") is None and p.get("current_price"):
         card["current_price"] = float(p["current_price"])
         card["price_source"] = "t212"
     card["company_name"] = (

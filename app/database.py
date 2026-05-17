@@ -168,6 +168,10 @@ class Database:
             conn.execute("ALTER TABLE positions ADD COLUMN current_price REAL")
         if "instrument_name" not in cols:
             conn.execute("ALTER TABLE positions ADD COLUMN instrument_name TEXT")
+        if "position_value" not in cols:
+            conn.execute("ALTER TABLE positions ADD COLUMN position_value REAL")
+        if "unrealized_pnl" not in cols:
+            conn.execute("ALTER TABLE positions ADD COLUMN unrealized_pnl REAL")
 
     # ── Runs ───────────────────────────────────────────────────────────────────
 
@@ -342,21 +346,25 @@ class Database:
         first_bought: Optional[str] = None,
         current_price: Optional[float] = None,
         instrument_name: Optional[str] = None,
+        position_value: Optional[float] = None,
+        unrealized_pnl: Optional[float] = None,
     ) -> None:
         with self._conn() as conn:
             conn.execute(
                 """INSERT INTO positions
                    (ticker, shares, avg_cost, source, first_bought, last_updated,
-                    current_price, instrument_name)
-                   VALUES (?,?,?,?,?,?,?,?)
+                    current_price, instrument_name, position_value, unrealized_pnl)
+                   VALUES (?,?,?,?,?,?,?,?,?,?)
                    ON CONFLICT(ticker) DO UPDATE SET
                      shares=excluded.shares, avg_cost=excluded.avg_cost,
                      source=excluded.source, last_updated=excluded.last_updated,
                      current_price=excluded.current_price,
-                     instrument_name=excluded.instrument_name""",
+                     instrument_name=excluded.instrument_name,
+                     position_value=excluded.position_value,
+                     unrealized_pnl=excluded.unrealized_pnl""",
                 (
                     ticker, shares, avg_cost, source, first_bought, _now(),
-                    current_price, instrument_name,
+                    current_price, instrument_name, position_value, unrealized_pnl,
                 ),
             )
 
