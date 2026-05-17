@@ -266,7 +266,7 @@
       <span>Last backup:
         <strong>{{ last_backup[:19].replace('T',' ') if last_backup else 'Never' }}</strong>
       </span>
-      <span>Retention: <strong>{{ key_warn_days }} days warning / {{ key_alert_days }} days alert</strong></span>
+      <span>Retention: <strong>{{ backup_retain_days }} days</strong></span>
     </div>
 
     <button id="backup-btn"
