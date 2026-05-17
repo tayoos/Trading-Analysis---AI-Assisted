@@ -214,10 +214,10 @@ class T212DataSource(DataSource):
                         "date":     item.get("dateTime", ""),
                         "ref":      item.get("reference", ""),
                     })
-                if not items:
-                    break
                 if next_path:
                     time.sleep(_HISTORY_PAGE_DELAY)
+                elif not items:
+                    break
         except T212TransactionsScopeError:
             raise
         except requests.HTTPError as exc:
@@ -241,9 +241,11 @@ class T212DataSource(DataSource):
             try:
                 resp = self._session.get(url, timeout=_TIMEOUT)
                 if resp.status_code == 403:
+                    body = resp.text[:200] if resp.text else ""
                     logger.error(
-                        "T212 HTTP 403 for %s — enable history:transactions on your API key",
+                        "T212 HTTP 403 for %s — enable history:transactions on your API key: %s",
                         path,
+                        body,
                     )
                     raise T212TransactionsScopeError(
                         "API key missing history:transactions scope"
