@@ -3,6 +3,8 @@ Shared dashboard assembly: cards, pie groups, capital metrics.
 """
 from __future__ import annotations
 
+from .capital import format_pie_icon
+
 PIE_TICKER_PREFIX = "PIE:"
 
 
@@ -120,6 +122,7 @@ def build_dashboard_view(
         pie_analysis = pie_analysis_map.get(pie_key)
         pie_groups.append({
             **pie,
+            "icon": format_pie_icon(pie.get("icon")),
             "analysis_ticker": pie_key,
             "analysis": pie_analysis,
             "member_cards": member_cards,
