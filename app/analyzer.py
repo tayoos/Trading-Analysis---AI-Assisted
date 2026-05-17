@@ -139,8 +139,15 @@ class StockAnalyzer:
     def _analyse_ticker(self, holding: dict) -> dict:
         ticker = holding["ticker"]
 
-        self._log(f"[{_ts()}] {ticker}: fetching market data from yfinance")
-        market_data = _fetch_market_data(ticker)
+        if holding.get("is_pie"):
+            self._log(f"[{_ts()}] {ticker}: pie portfolio — aggregated analysis")
+            market_data = {
+                "ticker": ticker,
+                "current_price": holding.get("current_price"),
+            }
+        else:
+            self._log(f"[{_ts()}] {ticker}: fetching market data from yfinance")
+            market_data = _fetch_market_data(ticker)
 
         price = market_data.get("current_price")
         pe = market_data.get("pe_ratio")
@@ -317,6 +324,31 @@ def _fetch_market_data(ticker: str) -> dict:
 
 def _build_prompt(holding: dict, market_data: dict, handoff_note: Optional[dict]) -> str:
     ticker = holding["ticker"]
+
+    if holding.get("is_pie"):
+        lines = [f"## Portfolio Investment (Pie): {holding.get('pie_name', ticker)}"]
+        lines.append(
+            "\nThis is a Trading 212 Pie — a basket of stocks managed together. "
+            "Provide a combined recommendation for the pie as a whole, considering "
+            "diversification, overlap, and how the constituents work together. "
+            "Individual tickers inside the pie should not each get a SELL unless the "
+            "whole pie thesis is broken."
+        )
+        lines.append("\n### Pie constituents")
+        for m in holding.get("pie_members", []):
+            lines.append(
+                f"- {m['ticker']}: {m.get('shares', 0):g} shares @ avg {m.get('avg_cost', 0):.4f}"
+            )
+        cost = holding.get("avg_cost", 0)
+        price = holding.get("current_price") or market_data.get("current_price") or 0
+        lines.append("\n### Pie totals")
+        lines.append(f"Invested (cost basis): {cost:.2f}")
+        lines.append(f"Current value: {price:.2f}")
+        if cost:
+            lines.append(f"Unrealised P&L: {(price - cost):+.2f} ({(price - cost) / cost * 100:+.1f}%)")
+        lines.append("\nAnalyse this pie as one portfolio unit and return your JSON recommendation.")
+        return "\n".join(lines)
+
     shares = holding.get("shares", 0)
     cost   = holding.get("avg_cost", 0)
     price  = market_data.get("current_price") or 0

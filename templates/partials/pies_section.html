@@ -1,0 +1,51 @@
+{% if pies %}
+<div class="pies-section">
+  <div class="pies-heading">Portfolio Investments (Pies)</div>
+  {% for pie in pies %}
+  <details class="pie-block" open>
+    <summary>
+      <span class="pie-name">{% if pie.icon %}{{ pie.icon }} {% endif %}{{ pie.name }}</span>
+      {% if pie.analysis and pie.analysis.recommendation %}
+      <span class="badge badge-{{ pie.analysis.recommendation }}">{{ pie.analysis.recommendation | replace('_', ' ') }}</span>
+      {% endif %}
+      <span class="pie-meta">
+        <span>{{ pie.member_cards|length }} stocks</span>
+        {% if pie.current_value %}<span>£{{ '%.0f'|format(pie.current_value) }}</span>{% endif %}
+      </span>
+    </summary>
+    <div class="pie-body">
+      {% if pie.analysis and pie.analysis.reasoning %}
+      <div class="pie-combined">
+        <strong>Combined analysis</strong>
+        <div class="reasoning">{{ pie.analysis.reasoning }}</div>
+      </div>
+      {% else %}
+      <p class="pie-combined" style="margin:0;color:var(--muted)">Run Analysis for a combined pie recommendation.</p>
+      {% endif %}
+      <div class="pie-members-label">Stocks in this pie</div>
+      <div class="pie-members-grid">
+        {% for card in pie.member_cards %}
+        {% set mc_ticker = card.ticker %}
+        {% set mc_rec = card.recommendation or 'HOLD' %}
+        <div class="stock-card compact rec-{{ mc_rec }}" data-ticker="{{ mc_ticker }}" onclick="openStockModal('{{ mc_ticker }}')">
+          <div class="card-header">
+            <div class="card-identity">
+              <div class="card-name">{{ mc_ticker }}</div>
+            </div>
+            <span class="badge badge-{{ mc_rec }}">{{ (card.recommendation or '—') | replace('_', ' ') }}</span>
+          </div>
+          <div class="holdings-strip">
+            <div class="h-stat"><span class="h-lbl">Shares</span><span class="h-val">{{ '%g'|format(card.shares) if card.shares else '—' }}</span></div>
+            <div class="h-stat"><span class="h-lbl">Rec</span><span class="h-val">{{ card.recommendation or '—' }}</span></div>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+  </details>
+  {% endfor %}
+</div>
+{% endif %}
+{% if cards %}
+<div class="standalone-heading">Individual holdings (not in a pie)</div>
+{% endif %}

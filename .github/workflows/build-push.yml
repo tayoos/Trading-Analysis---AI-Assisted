@@ -3,7 +3,8 @@ name: Build and push Docker image
 on:
   push:
     branches: [main]
-  workflow_dispatch:
+  pull_request:
+    branches: [main]
 
 env:
   REGISTRY: ghcr.io
@@ -37,19 +38,20 @@ jobs:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
             type=sha,prefix=
-            type=raw,value=latest
+            type=raw,value=latest,enable=${{ github.event_name == 'push' }}
 
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
           context: .
-          push: true
+          push: ${{ github.event_name == 'push' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
       - name: Make package public
+        if: github.event_name == 'push'
         continue-on-error: true
         run: |
           PACKAGE_NAME=$(echo "${{ github.repository }}" | cut -d'/' -f2 | tr '[:upper:]' '[:lower:]')

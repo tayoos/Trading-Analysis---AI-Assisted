@@ -133,6 +133,27 @@ class Database:
                     updated_at TEXT NOT NULL
                 );
 
+                CREATE TABLE IF NOT EXISTS pies (
+                    id              INTEGER PRIMARY KEY,
+                    name            TEXT NOT NULL,
+                    cash            REAL,
+                    reinvested      REAL,
+                    invested_value  REAL,
+                    current_value   REAL,
+                    icon            TEXT,
+                    synced_at       TEXT NOT NULL
+                );
+
+                CREATE TABLE IF NOT EXISTS pie_instruments (
+                    pie_id      INTEGER NOT NULL REFERENCES pies(id) ON DELETE CASCADE,
+                    ticker      TEXT NOT NULL,
+                    quantity    REAL NOT NULL,
+                    value       REAL,
+                    PRIMARY KEY (pie_id, ticker)
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_pie_instruments_ticker ON pie_instruments(ticker);
+
                 CREATE INDEX IF NOT EXISTS idx_analyses_run ON analyses(run_id);
                 CREATE INDEX IF NOT EXISTS idx_analyses_ticker ON analyses(ticker);
                 CREATE INDEX IF NOT EXISTS idx_trades_ticker ON trades(ticker);
@@ -450,6 +471,77 @@ class Database:
                 "last_7d":   total(" WHERE paid_at >= date('now', '-7 days')"),
                 "count":     conn.execute("SELECT COUNT(*) as c FROM dividends").fetchone()["c"],
             }
+
+    # ── Pies ───────────────────────────────────────────────────────────────────
+
+    def replace_pies(self, pies: list[dict]) -> None:
+        """Replace all pie metadata and instrument memberships."""
+        with self._conn() as conn:
+            conn.execute("DELETE FROM pie_instruments")
+            conn.execute("DELETE FROM pies")
+            for pie in pies:
+                conn.execute(
+                    """INSERT INTO pies
+                       (id, name, cash, reinvested, invested_value, current_value, icon, synced_at)
+                       VALUES (?,?,?,?,?,?,?,?)""",
+                    (
+                        pie["id"], pie["name"], pie.get("cash"),
+                        pie.get("reinvested"), pie.get("invested_value"),
+                        pie.get("current_value"), pie.get("icon"), _now(),
+                    ),
+                )
+                for inst in pie.get("instruments", []):
+                    conn.execute(
+                        """INSERT INTO pie_instruments (pie_id, ticker, quantity, value)
+                           VALUES (?,?,?,?)""",
+                        (pie["id"], inst["ticker"], inst["quantity"], inst.get("value")),
+                    )
+
+    def get_pies(self) -> list[dict]:
+        with self._conn() as conn:
+            pies = [dict(r) for r in conn.execute(
+                "SELECT * FROM pies ORDER BY name"
+            ).fetchall()]
+            for pie in pies:
+                rows = conn.execute(
+                    "SELECT ticker, quantity, value FROM pie_instruments WHERE pie_id=? ORDER BY ticker",
+                    (pie["id"],),
+                ).fetchall()
+                pie["instruments"] = [dict(r) for r in rows]
+            return pies
+
+    def get_pie_tickers(self) -> set[str]:
+        with self._conn() as conn:
+            rows = conn.execute("SELECT DISTINCT ticker FROM pie_instruments").fetchall()
+            return {r["ticker"] for r in rows}
+
+    def get_capital_metrics(self) -> dict:
+        """Cached net deposits / reinvested breakdown from last T212 sync."""
+        keys = (
+            "capital_net_deposits",
+            "capital_holdings_cost",
+            "capital_reinvested",
+            "capital_synced_at",
+        )
+        raw = {k: self.get_setting(k) for k in keys}
+        return {
+            "net_deposits":    float(raw["capital_net_deposits"]) if raw["capital_net_deposits"] else None,
+            "holdings_cost":   float(raw["capital_holdings_cost"]) if raw["capital_holdings_cost"] else None,
+            "reinvested":      float(raw["capital_reinvested"]) if raw["capital_reinvested"] else None,
+            "synced_at":       raw["capital_synced_at"],
+        }
+
+    def save_capital_metrics(self, metrics: dict) -> None:
+        mapping = {
+            "net_deposits":  "capital_net_deposits",
+            "holdings_cost": "capital_holdings_cost",
+            "reinvested":    "capital_reinvested",
+        }
+        for field, key in mapping.items():
+            val = metrics.get(field)
+            if val is not None:
+                self.set_setting(key, str(round(float(val), 2)))
+        self.set_setting("capital_synced_at", _now())
 
     def get_all_handoff_notes(self) -> dict:
         """Returns all handoff notes keyed by ticker — single query."""
