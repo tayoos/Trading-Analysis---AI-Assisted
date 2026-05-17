@@ -15,7 +15,9 @@ def index():
     pos_map   = {p["ticker"]: p for p in positions}
     handoff_notes = db.get_all_handoff_notes()
 
-    live_prices = price_cache.get_prices()["prices"]
+    price_data   = price_cache.get_prices()
+    live_prices  = price_data["prices"]
+    company_names = price_data["names"]
 
     cards = []
     analysed = set()
@@ -62,6 +64,7 @@ def index():
         analyzer_status=current_app.extensions["analyzer"].status,
         key_warnings=key_warnings,
         dividend_stats=dividend_stats,
+        company_names=company_names,
         active_page="dashboard",
     )
 

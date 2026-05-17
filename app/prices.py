@@ -27,6 +27,7 @@ class LivePriceCache:
         self._errors: dict[str, str]    = {}   # ticker → error message
         self._fetched_at: Optional[float] = None
         self._refreshing = False
+        self._names:  dict[str, str]    = {}   # ticker → company name (cached forever)
 
     # ── Public API ─────────────────────────────────────────────────────────────
 
@@ -35,6 +36,7 @@ class LivePriceCache:
         with self._lock:
             return {
                 "prices":     dict(self._prices),
+                "names":      dict(self._names),
                 "errors":     dict(self._errors),
                 "fetched_at": self._fetched_at,
                 "stale":      self._is_stale(),
@@ -75,6 +77,16 @@ class LivePriceCache:
             len(prices), len(errors),
             ", ".join(f"{t}={p:.2f}" for t, p in sorted(prices.items())),
         )
+        # Fetch company names for any tickers not yet cached (background, non-blocking)
+        with self._lock:
+            missing = [t for t in tickers if t not in self._names]
+        if missing:
+            threading.Thread(
+                target=self._fetch_names,
+                args=(missing,),
+                daemon=True,
+                name="name-fetch",
+            ).start()
         return self.get_prices()
 
     def refresh_in_background(self, tickers: list[str]) -> None:
@@ -86,6 +98,27 @@ class LivePriceCache:
             name="price-refresh",
         )
         t.start()
+
+    def _fetch_names(self, tickers: list[str]) -> None:
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+
+        def _one(ticker: str) -> tuple[str, str]:
+            for candidate in _ticker_candidates(ticker):
+                try:
+                    info = yf.Ticker(candidate).info
+                    name = info.get("shortName") or info.get("longName") or ""
+                    if name:
+                        return ticker, name
+                except Exception:
+                    pass
+            return ticker, ""
+
+        with ThreadPoolExecutor(max_workers=3) as pool:
+            for ticker, name in pool.map(_one, tickers):
+                if name:
+                    with self._lock:
+                        self._names[ticker] = name
+        logger.info("Company names cached: %d/%d resolved", sum(1 for t in tickers if t in self._names), len(tickers))
 
     def is_stale(self) -> bool:
         with self._lock:

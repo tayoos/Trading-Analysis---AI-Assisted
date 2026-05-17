@@ -120,7 +120,7 @@
   /* ── Card grid ──────────────────────────────────────────────────────── */
   .card-grid {
     display: grid;
-    gap: 12px;
+    gap: 14px;
     padding: 0 24px 24px;
     grid-template-columns: repeat(2, 1fr);
   }
@@ -136,95 +136,128 @@
     border-radius: var(--radius);
     overflow: hidden;
     cursor: pointer;
-    transition: border-color 0.18s, box-shadow 0.18s, transform 0.1s;
+    transition: border-color 0.18s, box-shadow 0.18s, transform 0.12s;
     display: flex;
     flex-direction: column;
   }
 
   .stock-card:hover {
-    border-color: rgba(33,150,243,.5);
-    box-shadow: 0 6px 24px rgba(0,0,0,.25);
-    transform: translateY(-1px);
+    border-color: rgba(0,200,150,.3);
+    box-shadow: 0 8px 32px rgba(0,0,0,.35);
+    transform: translateY(-2px);
   }
 
-  /* accent left border by recommendation */
-  .stock-card.rec-BUY        { border-left: 3px solid var(--buy); }
-  .stock-card.rec-SELL       { border-left: 3px solid var(--sell); }
-  .stock-card.rec-HOLD_LONG  { border-left: 3px solid var(--hold-long); }
-  .stock-card.rec-HOLD_SHORT { border-left: 3px solid var(--hold-short); }
-  .stock-card.rec-HOLD       { border-left: 3px solid var(--hold); }
-  .stock-card.rec-WATCH      { border-left: 3px solid var(--watch); }
+  .stock-card.rec-BUY        { border-left: 3px solid #00c896; }
+  .stock-card.rec-SELL       { border-left: 3px solid #f0443a; }
+  .stock-card.rec-HOLD_LONG  { border-left: 3px solid #00c896; }
+  .stock-card.rec-HOLD_SHORT { border-left: 3px solid #ff9800; }
+  .stock-card.rec-HOLD       { border-left: 3px solid #78909c; }
+  .stock-card.rec-WATCH      { border-left: 3px solid #9c27b0; }
 
   /* ── Card header ────────────────────────────────────────────────────── */
   .card-header {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
+    justify-content: space-between;
     gap: 10px;
-    padding: 14px 16px 8px;
+    padding: 16px 16px 6px;
   }
 
-  .card-ticker {
-    font-size: 18px;
+  .card-identity { flex: 1; min-width: 0; }
+
+  .card-name {
+    font-size: 14px;
     font-weight: 700;
-    flex: 1;
-    letter-spacing: -0.3px;
+    color: var(--text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    letter-spacing: -0.2px;
+    margin-bottom: 2px;
   }
 
-  .card-conf {
-    font-size: 10px;
-    font-weight: 600;
+  .card-sub {
+    font-size: 11px;
     color: var(--muted);
-    letter-spacing: 0.4px;
-    text-transform: uppercase;
+    font-weight: 500;
+    letter-spacing: 0.2px;
   }
 
   /* ── Sparkline ──────────────────────────────────────────────────────── */
   .spark-wrap {
-    padding: 0 16px;
-    height: 48px;
+    padding: 4px 16px 0;
+    height: 52px;
   }
 
-  /* ── Metrics row ────────────────────────────────────────────────────── */
-  .metrics {
+  /* ── Price row ──────────────────────────────────────────────────────── */
+  .price-row {
     display: flex;
-    align-items: stretch;
-    gap: 0;
-    padding: 8px 16px 6px;
-    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: space-between;
+    padding: 10px 16px 6px;
     gap: 8px;
   }
 
-  .mc {
+  .price-val {
+    font-size: 24px;
+    font-weight: 700;
+    color: var(--text);
+    letter-spacing: -0.5px;
+    line-height: 1;
+  }
+
+  .pnl-pill {
+    font-size: 13px;
+    font-weight: 700;
+    padding: 3px 10px;
+    border-radius: 20px;
+    line-height: 1.4;
+    white-space: nowrap;
+  }
+
+  .pnl-pill.pos { background: rgba(0,200,150,.15);  color: #00c896; }
+  .pnl-pill.neg { background: rgba(240,68,58,.15);  color: #f0443a; }
+  .pnl-pill.neu { background: rgba(120,144,156,.1); color: #78909c; }
+
+  /* ── Holdings strip ─────────────────────────────────────────────────── */
+  .holdings-strip {
+    display: flex;
+    gap: 0;
+    padding: 8px 16px 10px;
+    border-top: 1px solid var(--border);
+    margin-top: 4px;
+  }
+
+  .h-stat {
     display: flex;
     flex-direction: column;
     gap: 1px;
+    flex: 1;
   }
 
-  .mc-lbl {
-    font-size: 10px;
-    font-weight: 600;
+  .h-stat + .h-stat {
+    border-left: 1px solid var(--border);
+    padding-left: 10px;
+    margin-left: 10px;
+  }
+
+  .h-lbl {
+    font-size: 9px;
+    font-weight: 700;
     color: var(--muted);
     text-transform: uppercase;
-    letter-spacing: 0.4px;
+    letter-spacing: 0.5px;
   }
 
-  .mc-val {
-    font-size: 15px;
-    font-weight: 700;
+  .h-val {
+    font-size: 13px;
+    font-weight: 600;
     color: var(--text);
-    line-height: 1.1;
+    line-height: 1.2;
   }
 
-  .mc-val.big { font-size: 20px; }
-  .mc-val.pos { color: var(--pos); }
-  .mc-val.neg { color: var(--neg); }
-
-  .vdiv {
-    width: 1px;
-    background: var(--border);
-    align-self: stretch;
-    margin: 0 4px;
-  }
+  .h-val.pos { color: #00c896; }
+  .h-val.neg { color: #f0443a; }
 
   /* ── Fund pills ─────────────────────────────────────────────────────── */
   .fund-strip {
@@ -232,13 +265,14 @@
     gap: 5px;
     padding: 4px 16px 6px;
     flex-wrap: wrap;
+    border-top: 1px solid var(--border);
   }
 
   .fp {
     background: var(--surface2);
     border: 1px solid var(--border);
-    border-radius: 4px;
-    padding: 2px 7px;
+    border-radius: 6px;
+    padding: 3px 8px;
     font-size: 11px;
     color: var(--muted);
     white-space: nowrap;
@@ -247,7 +281,7 @@
   .fp strong { color: var(--text); font-weight: 600; }
 
   /* ── Card body ──────────────────────────────────────────────────────── */
-  .card-body { padding: 8px 16px 10px; flex: 1; }
+  .card-body { padding: 8px 16px 12px; flex: 1; border-top: 1px solid var(--border); }
 
   .reasoning {
     font-size: 12px;
@@ -456,42 +490,42 @@
   <div class="stock-card rec-{{ rec }}" onclick="location.href='/ticker/{{ ticker }}'">
 
     <div class="card-header">
-      <span class="card-ticker">{{ ticker }}</span>
+      <div class="card-identity">
+        <div class="card-name" id="cname-{{ ticker }}">{{ ticker }}</div>
+        <div class="card-sub">{{ ticker }}{% if card.confidence %} · {{ card.confidence }}{% endif %}</div>
+      </div>
       <span class="badge badge-{{ rec }}">{{ rec | replace('_', ' ') }}</span>
-      <span class="card-conf">{{ card.confidence or '' }}</span>
     </div>
 
     <div class="spark-wrap">
-      <canvas id="spark-{{ ticker }}" height="48"></canvas>
+      <canvas id="spark-{{ ticker }}" height="52"></canvas>
     </div>
 
-    <div class="metrics">
-      <div class="mc">
-        <span class="mc-lbl">Qty</span>
-        <span class="mc-val">{{ '%g'|format(shares) if shares else '—' }}</span>
+    <div class="price-row">
+      <span class="price-val">{{ '%.2f'|format(price) if has_price else '—' }}</span>
+      <span class="pnl-pill {{ 'pos' if (has_price and cost and pnl_pct >= 0) else ('neg' if (has_price and cost and pnl_pct < 0) else 'neu') }}">
+        {{ '%+.1f'|format(pnl_pct) + '%' if (has_price and cost) else '—' }}
+      </span>
+    </div>
+
+    <div class="holdings-strip">
+      <div class="h-stat">
+        <span class="h-lbl">Shares</span>
+        <span class="h-val">{{ '%g'|format(shares) if shares else '—' }}</span>
       </div>
-      <div class="vdiv"></div>
-      <div class="mc">
-        <span class="mc-lbl">Price</span>
-        <span class="mc-val">{{ '%.2f'|format(price) if has_price else '—' }}</span>
+      <div class="h-stat">
+        <span class="h-lbl">Avg Cost</span>
+        <span class="h-val">{{ '%.2f'|format(cost) if cost else '—' }}</span>
       </div>
-      <div class="vdiv"></div>
-      <div class="mc">
-        <span class="mc-lbl">P&amp;L %</span>
-        <span class="mc-val big {{ 'pos' if pnl_pct >= 0 else 'neg' }}">{{ '%+.1f'|format(pnl_pct) + '%' if (has_price and cost) else '—' }}</span>
+      <div class="h-stat">
+        <span class="h-lbl">P&amp;L</span>
+        <span class="h-val {{ 'pos' if pnl_abs >= 0 else 'neg' }}">{{ '%+.2f'|format(pnl_abs) if (has_price and cost) else '—' }}</span>
       </div>
-      <div class="vdiv"></div>
-      <div class="mc">
-        <span class="mc-lbl">Value</span>
-        <span class="mc-val">{{ '%.0f'|format(price * shares) if has_price else '—' }}</span>
+      <div class="h-stat">
+        <span class="h-lbl">Value</span>
+        {% set val = price * shares %}
+        <span class="h-val">{{ ('%.0f' if val >= 10 else '%.2f')|format(val) if has_price else '—' }}</span>
       </div>
-      {% if card.price_target_30d %}
-      <div class="vdiv"></div>
-      <div class="mc">
-        <span class="mc-lbl">Target</span>
-        <span class="mc-val">{{ '%.2f'|format(card.price_target_30d) }}</span>
-      </div>
-      {% endif %}
     </div>
 
     {% if card.pe_ratio or card.analyst_target_mean or card.next_earnings or card.eps_growth_pct is not none %}
@@ -503,6 +537,7 @@
     </div>
     {% endif %}
 
+    {% if card.reasoning %}
     <div class="card-body">
       {% if card.news_sentiment %}
       <span class="sent-pill sent-{{ card.news_sentiment }}">{{ card.news_sentiment }}</span>
@@ -524,6 +559,7 @@
         {% endif %}
       </div>
     </div>
+    {% endif %}
 
     {% if card.price_target_30d or card.outlook_90d %}
     <div class="card-footer">
@@ -714,5 +750,12 @@
 
   loadSummary();
   pollStatus();
+
+  // Inject company names from server-side data
+  const _names = {{ company_names | tojson }};
+  for (const [ticker, name] of Object.entries(_names)) {
+    const el = document.getElementById('cname-' + ticker);
+    if (el && name) el.textContent = name;
+  }
 </script>
 {% endblock %}
