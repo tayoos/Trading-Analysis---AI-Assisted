@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 
 from flask import Blueprint, current_app, jsonify, render_template, request
 
-from ..capital import sync_capital_from_t212, sync_pies_from_t212
+from ..capital import apply_net_deposit, sync_capital_from_t212, sync_pies_from_t212
 
 bp = Blueprint("sync", __name__)
 logger = logging.getLogger(__name__)
@@ -55,6 +55,35 @@ def sync_page():
 
 # ── T212 sync ──────────────────────────────────────────────────────────────────
 
+@bp.post("/api/capital/net-deposit")
+def set_net_deposit():
+    """Save net deposit from the Sync page (no API scope or env reload needed)."""
+    db = current_app.extensions["db"]
+    body = request.get_json(silent=True) or {}
+    raw = body.get("amount")
+    if raw is None or raw == "":
+        return jsonify({"error": "amount is required"}), 400
+    try:
+        amount = float(raw)
+    except (TypeError, ValueError):
+        return jsonify({"error": "amount must be a number"}), 400
+    if amount < 0:
+        return jsonify({"error": "amount must be zero or positive"}), 400
+    capital = apply_net_deposit(db, amount)
+    return jsonify({"status": "ok", "capital": capital})
+
+
+@bp.post("/api/capital/sync")
+def sync_capital_only():
+    """Fetch account summary + transactions without a full trade sync."""
+    t212 = current_app.extensions["t212"]
+    db = current_app.extensions["db"]
+    if not t212.is_available():
+        return jsonify({"error": "TRADING212_API_KEY not configured"}), 400
+    capital = sync_capital_from_t212(t212, db, holdings_cost=0.0)
+    return jsonify({"status": "ok", "capital": capital})
+
+
 @bp.get("/api/sync/status")
 def sync_status():
     with _sync_lock:
@@ -80,6 +109,11 @@ def sync_t212():
             since = db.get_latest_trade_time()
             logger.info("T212 sync starting — most recent trade: %s", since or "none (full history fetch)")
 
+            # Net deposit uses transactions API (6 req/min) — run before orders/pies
+            with _sync_lock:
+                _sync_state["message"] = "Syncing net deposit & account summary…"
+            sync_capital_from_t212(t212, db, holdings_cost=0.0)
+
             with _sync_lock:
                 _sync_state["message"] = "Fetching trades from Trading 212…"
             orders = t212.get_orders(since=since)
@@ -95,11 +129,10 @@ def sync_t212():
             _reconcile_positions(t212, db)
 
             with _sync_lock:
-                _sync_state["message"] = "Syncing capital metrics…"
+                _sync_state["message"] = "Refreshing capital metrics…"
             holdings_cost = sum(
                 p["shares"] * p["avg_cost"] for p in db.get_positions()
             )
-            # Fetch transactions before pie detail calls exhaust the rate limit
             sync_capital_from_t212(t212, db, holdings_cost)
 
             with _sync_lock:

@@ -134,7 +134,7 @@ def build_dashboard_view(
         "reinvested":         capital.get("reinvested"),
         "holdings_cost":      capital.get("holdings_cost") or round(total_cost, 2),
         "capital_synced_at":  capital.get("synced_at"),
-        "net_deposits_known": (capital.get("transaction_count") or 0) > 0,
+        "net_deposits_known": capital.get("net_deposits") is not None,
         "capital_error":      capital.get("last_error"),
     }
 

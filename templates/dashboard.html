@@ -739,7 +739,7 @@
       {% if capital.last_error == 'missing_transactions_scope' %}
       Enable <code>history:transactions</code> on API key
       {% elif capital.net_deposits is none %}
-      Sync T212 or set NET_DEPOSITS_OVERRIDE
+      <a href="/sync" style="color:var(--buy)">Set on Sync page</a> or enable <code>history:transactions</code>
       {% elif capital.reinvested is not none and capital.reinvested > 0 %}
       £{{ '{:,.2f}'.format(capital.reinvested) }} from dividends &amp; gains
       {% else %}
@@ -967,7 +967,9 @@
       } else if (netEl) {
         netEl.textContent = '—';
         if (netSub && s.capital_error === 'missing_transactions_scope') {
-          netSub.innerHTML = 'Enable <code>history:transactions</code> on API key';
+          netSub.innerHTML = '<a href="/sync" style="color:var(--buy)">Set on Sync page</a> or enable <code>history:transactions</code>';
+        } else if (netSub) {
+          netSub.innerHTML = '<a href="/sync" style="color:var(--buy)">Set on Sync page</a>';
         }
       }
       const invEl = document.getElementById('s-currently-invested');
