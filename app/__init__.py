@@ -265,9 +265,13 @@ def _analysis_job(app: Flask, analyzer: StockAnalyzer, portfolio: PortfolioManag
 def main() -> None:
     logging.basicConfig(
         level=logging.INFO,
-        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+        format="%(levelname)s %(name)s: %(message)s",
     )
-    app = create_app()
+    try:
+        app = create_app()
+    except Exception:
+        logger.critical("Startup failed", exc_info=True)
+        raise SystemExit(1)
     port = int(os.getenv("PORT", "8765"))
     app.run(host="0.0.0.0", port=port, debug=False)
 
