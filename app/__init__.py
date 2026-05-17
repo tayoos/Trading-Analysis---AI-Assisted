@@ -35,6 +35,16 @@ def create_app() -> Flask:
     _load_env()
     _setup_access_log(app)
 
+    from .time_display import display_timezone_name, format_datetime
+    from datetime import datetime, timezone
+
+    tz = display_timezone_name() or "UTC"
+    logger.info(
+        "Display timezone TZ=%s (now %s)",
+        tz,
+        format_datetime(datetime.now(timezone.utc).isoformat()),
+    )
+
     # ── Core services ──────────────────────────────────────────────────────────
     db = Database(os.getenv("DB_PATH", "/data/db/stocks.db"))
     t212 = T212DataSource()

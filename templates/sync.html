@@ -232,6 +232,7 @@
     <div class="card-meta">
       Last sync{% if display_timezone %} <span style="color:var(--muted);font-weight:400">({{ display_timezone }})</span>{% endif %}:
       <strong id="last-sync-time">{{ last_sync_display }}</strong>
+      <br><span style="font-size:11px;color:var(--muted)">Now: {{ now_display }}</span>
       {% if capital.synced_at %}
       <br>Net deposit: <strong>{% if capital.net_deposits is not none %}£{{ '{:,.2f}'.format(capital.net_deposits) }}{% else %}—{% endif %}</strong>
       · Currently invested: <strong>{% if capital.holdings_cost is not none %}£{{ '{:,.2f}'.format(capital.holdings_cost) }}{% else %}—{% endif %}</strong>

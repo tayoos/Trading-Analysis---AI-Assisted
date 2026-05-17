@@ -7,5 +7,6 @@ gunicorn>=22.0.0
 apscheduler>=3.10.0
 requests>=2.32.0
 python-dotenv>=1.0.0
+tzdata>=2024.1
 cryptography>=42.0.0
 msoffcrypto-tool>=5.4.0

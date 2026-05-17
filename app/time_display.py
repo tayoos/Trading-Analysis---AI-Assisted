@@ -2,9 +2,12 @@
 Format UTC timestamps for the UI using the container TZ env var (e.g. Europe/London).
 Times are always stored in UTC; only display is localized.
 """
+import logging
 import os
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+logger = logging.getLogger(__name__)
 
 
 def display_timezone_name() -> str:
@@ -18,7 +21,10 @@ def display_timezone() -> ZoneInfo:
         try:
             return ZoneInfo(name)
         except ZoneInfoNotFoundError:
-            pass
+            logger.warning(
+                "TZ=%r not found (install tzdata in the image) — falling back to UTC",
+                name,
+            )
     return ZoneInfo("UTC")
 
 

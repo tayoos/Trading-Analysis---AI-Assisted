@@ -3,6 +3,8 @@ Shared dashboard assembly: cards, pie groups, capital metrics.
 """
 from __future__ import annotations
 
+from collections import defaultdict
+
 from .capital import format_pie_icon
 
 PIE_TICKER_PREFIX = "PIE:"
@@ -60,7 +62,6 @@ def build_dashboard_view(
     positions = db.get_positions()
     handoff_notes = db.get_all_handoff_notes()
     pies = db.get_pies()
-    pie_tickers = db.get_pie_tickers()
 
     price_data = price_cache.get_prices()
     live_prices = price_data["prices"]
@@ -111,13 +112,39 @@ def build_dashboard_view(
                 None, p, live_prices, handoff_notes, company_names, price_errors,
             )
 
+    # Shares held inside pies (same ticker may appear in multiple pies)
+    pie_qty_by_ticker: dict[str, float] = defaultdict(float)
+    for pie in pies:
+        for inst in pie["instruments"]:
+            pie_qty_by_ticker[inst["ticker"]] += float(inst.get("quantity") or 0)
+
+    def _card_for_pie_member(ticker: str, pie_shares: float, pie_value: float | None) -> dict:
+        """Card scoped to the slice of a position held inside a pie."""
+        base = dict(cards_by_ticker.get(ticker) or build_card(
+            None,
+            {"ticker": ticker, "shares": pie_shares, "avg_cost": 0},
+            live_prices,
+            handoff_notes,
+            company_names,
+            price_errors,
+        ))
+        base["shares"] = pie_shares
+        if pie_value and pie_shares > 0:
+            base["cost_basis"] = round(pie_value / pie_shares, 6)
+        base["in_pie_only"] = True
+        return base
+
     pie_groups = []
     for pie in pies:
         member_cards = []
         for inst in pie["instruments"]:
             t = inst["ticker"]
-            if t in cards_by_ticker:
-                member_cards.append(cards_by_ticker[t])
+            qty = float(inst.get("quantity") or 0)
+            if qty <= 0:
+                continue
+            member_cards.append(
+                _card_for_pie_member(t, qty, inst.get("value"))
+            )
         pie_key = pie_analysis_ticker(pie["id"])
         pie_analysis = pie_analysis_map.get(pie_key)
         pie_groups.append({
@@ -128,11 +155,22 @@ def build_dashboard_view(
             "member_cards": member_cards,
         })
 
-    standalone_cards = [
-        cards_by_ticker[t]
-        for t in sorted(cards_by_ticker)
-        if t not in pie_tickers
-    ]
+    # Standalone = shares not allocated to any pie (may overlap ticker with pie holdings)
+    standalone_cards: list[dict] = []
+    for t in sorted(cards_by_ticker):
+        pos = pos_map.get(t)
+        total_shares = float((pos or {}).get("shares") or cards_by_ticker[t].get("shares") or 0)
+        outside_shares = total_shares - pie_qty_by_ticker.get(t, 0)
+        if outside_shares <= 0.0001:
+            continue
+        card = dict(cards_by_ticker[t])
+        card["shares"] = round(outside_shares, 6)
+        card["in_pie_only"] = False
+        if pie_qty_by_ticker.get(t, 0) > 0:
+            card["also_in_pie"] = True
+        if pos and pos.get("avg_cost"):
+            card["cost_basis"] = pos["avg_cost"]
+        standalone_cards.append(card)
 
     account_total = capital.get("account_total_value")
     if account_total:
