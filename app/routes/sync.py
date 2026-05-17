@@ -25,6 +25,7 @@ def sync_page():
 
     trades    = db.get_trades(limit=50)
     last_sync = db.get_last_sync_time()
+    capital   = db.get_capital_metrics()
     key_ages         = db.get_key_ages()
     backup_list      = backup.list_backups()
     last_backup      = backup.last_backup_time()
@@ -36,6 +37,7 @@ def sync_page():
         "sync.html",
         trades=trades,
         last_sync=last_sync,
+        capital=capital,
         t212_available=t212.is_available(),
         sync_running=sync_running,
         key_ages=key_ages,

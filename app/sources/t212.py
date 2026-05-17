@@ -18,6 +18,10 @@ _HISTORY_PAGE_DELAY = 10.0
 _TRADE_FILL_TYPES = {"TRADE", "FOP", "FOP_CORRECTION"}
 
 
+class T212TransactionsScopeError(Exception):
+    """Raised when the API key lacks the history:transactions scope (HTTP 403)."""
+
+
 class T212DataSource(DataSource):
     """Trading 212 REST API v0 client — HTTP Basic Auth (api_key:api_secret)."""
 
@@ -196,26 +200,77 @@ class T212DataSource(DataSource):
         next_path: Optional[str] = "/api/v0/equity/history/transactions?limit=50"
         page = 0
 
-        while next_path:
-            page += 1
-            data = self._get(next_path)
-            items = data.get("items", [])
-            next_path = data.get("nextPagePath")
-            for item in items:
-                results.append({
-                    "amount":   float(item.get("amount", 0)),
-                    "currency": item.get("currency"),
-                    "type":     item.get("type", ""),
-                    "date":     item.get("dateTime", ""),
-                    "ref":      item.get("reference", ""),
-                })
-            if not items:
-                break
-            if next_path:
-                time.sleep(_HISTORY_PAGE_DELAY)
+        try:
+            while next_path:
+                page += 1
+                data = self._get_transactions_page(next_path)
+                items = data.get("items", [])
+                next_path = data.get("nextPagePath")
+                for item in items:
+                    results.append({
+                        "amount":   float(item.get("amount", 0)),
+                        "currency": item.get("currency"),
+                        "type":     item.get("type", ""),
+                        "date":     item.get("dateTime", ""),
+                        "ref":      item.get("reference", ""),
+                    })
+                if not items:
+                    break
+                if next_path:
+                    time.sleep(_HISTORY_PAGE_DELAY)
+        except T212TransactionsScopeError:
+            raise
+        except requests.HTTPError as exc:
+            if exc.response is not None and exc.response.status_code == 403:
+                logger.error(
+                    "T212 transactions blocked — enable API scope "
+                    "'history:transactions' when creating the key"
+                )
+                raise T212TransactionsScopeError(
+                    "API key missing history:transactions scope"
+                ) from exc
+            raise
 
         logger.info("T212 ✓ fetched %d transactions across %d page(s)", len(results), page)
         return results
+
+    def _get_transactions_page(self, path: str) -> dict:
+        """GET one transactions page; map 403 to T212TransactionsScopeError."""
+        url = f"{_BASE_URL}{path}"
+        for attempt in range(10):
+            try:
+                resp = self._session.get(url, timeout=_TIMEOUT)
+                if resp.status_code == 403:
+                    logger.error(
+                        "T212 HTTP 403 for %s — enable history:transactions on your API key",
+                        path,
+                    )
+                    raise T212TransactionsScopeError(
+                        "API key missing history:transactions scope"
+                    )
+                if resp.status_code == 429:
+                    reset_ts = resp.headers.get("x-ratelimit-reset")
+                    if reset_ts:
+                        raw_wait = int(reset_ts) - int(time.time()) + 1
+                        wait = max(min(raw_wait, 60), 10)
+                    else:
+                        wait = 15
+                    logger.warning(
+                        "T212 rate limited on %s — waiting %ds (attempt %d/10)",
+                        path, wait, attempt + 1,
+                    )
+                    time.sleep(wait)
+                    continue
+                resp.raise_for_status()
+                return resp.json()
+            except T212TransactionsScopeError:
+                raise
+            except requests.HTTPError:
+                raise
+            except requests.RequestException as exc:
+                logger.error("T212 request failed for %s: %s", path, exc)
+                raise
+        raise RuntimeError(f"T212 rate limit retries exhausted after 10 attempts for {path}")
 
     def get_pies(self) -> list[dict]:
         """List pies (summary only — use get_pie for holdings)."""

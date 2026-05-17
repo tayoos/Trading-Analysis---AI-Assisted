@@ -732,15 +732,25 @@
     <div class="s-label">Portfolio Value</div>
     <div class="s-value" id="s-value">—</div>
   </div>
-  <div class="s-card clickable" onclick="openCapitalModal('investment')" title="Money you deposited minus withdrawals">
-    <div class="s-label">Investment amount</div>
-    <div class="s-value" id="s-invested">{% if capital.net_deposits is not none %}£{{ '%.2f'|format(capital.net_deposits) }}{% else %}—{% endif %}</div>
-    <div class="s-sub">Net deposited{% if capital.net_deposits is none %} · sync T212{% endif %}</div>
+  <div class="s-card clickable" onclick="openCapitalModal('net-deposit')" title="Deposits minus withdrawals">
+    <div class="s-label">Net deposit</div>
+    <div class="s-value" id="s-net-deposit">{% if capital.net_deposits is not none %}£{{ '{:,.2f}'.format(capital.net_deposits) }}{% else %}—{% endif %}</div>
+    <div class="s-sub" id="s-net-deposit-sub">
+      {% if capital.last_error == 'missing_transactions_scope' %}
+      Enable <code>history:transactions</code> on API key
+      {% elif capital.net_deposits is none %}
+      Sync T212 or set NET_DEPOSITS_OVERRIDE
+      {% elif capital.reinvested is not none and capital.reinvested > 0 %}
+      £{{ '{:,.2f}'.format(capital.reinvested) }} from dividends &amp; gains
+      {% else %}
+      Your own money in
+      {% endif %}
+    </div>
   </div>
-  <div class="s-card clickable" onclick="openCapitalModal('reinvested')" title="Dividends and gains reinvested into holdings">
-    <div class="s-label">Reinvested amount</div>
-    <div class="s-value" id="s-reinvested">{% if capital.reinvested is not none %}£{{ '%.2f'|format(capital.reinvested) }}{% else %}—{% endif %}</div>
-    <div class="s-sub">Holdings cost <span id="s-holdings-cost">{% if capital.holdings_cost is not none %}£{{ '%.2f'|format(capital.holdings_cost) }}{% else %}—{% endif %}</span></div>
+  <div class="s-card clickable" onclick="openCapitalModal('currently-invested')" title="Total cost basis of open positions">
+    <div class="s-label">Currently invested</div>
+    <div class="s-value" id="s-currently-invested">{% if capital.holdings_cost is not none %}£{{ '{:,.2f}'.format(capital.holdings_cost) }}{% else %}—{% endif %}</div>
+    <div class="s-sub">Cost basis of holdings</div>
   </div>
   <div class="s-card">
     <div class="s-label">Total P&amp;L</div>
@@ -949,18 +959,19 @@
       const d = await r.json();
       const s = d.summary;
       document.getElementById('s-value').textContent = '£' + fmt(s.total_value);
+      const netEl = document.getElementById('s-net-deposit');
+      const netSub = document.getElementById('s-net-deposit-sub');
       if (s.net_deposits != null && s.net_deposits_known !== false) {
-        document.getElementById('s-invested').textContent = '£' + fmt(s.net_deposits);
-      } else {
-        document.getElementById('s-invested').textContent = '—';
+        netEl.textContent = '£' + fmt(s.net_deposits);
+        if (netSub && s.reinvested > 0) netSub.textContent = '£' + fmt(s.reinvested) + ' from dividends & gains';
+      } else if (netEl) {
+        netEl.textContent = '—';
+        if (netSub && s.capital_error === 'missing_transactions_scope') {
+          netSub.innerHTML = 'Enable <code>history:transactions</code> on API key';
+        }
       }
-      if (s.reinvested != null) {
-        document.getElementById('s-reinvested').textContent = '£' + fmt(s.reinvested);
-      } else {
-        document.getElementById('s-reinvested').textContent = '—';
-      }
-      const hc = document.getElementById('s-holdings-cost');
-      if (hc) hc.textContent = s.holdings_cost != null ? ('£' + fmt(s.holdings_cost)) : '—';
+      const invEl = document.getElementById('s-currently-invested');
+      if (invEl) invEl.textContent = s.holdings_cost != null ? ('£' + fmt(s.holdings_cost)) : '—';
       const pnl = s.total_pnl, pct = s.total_pnl_pct;
       const pnlEl = document.getElementById('s-pnl');
       pnlEl.textContent = (pnl >= 0 ? '+£' : '-£') + fmt(Math.abs(pnl));
@@ -973,7 +984,7 @@
 
   function fmt(n) {
     if (n == null) return '—';
-    return Math.abs(n) >= 1000 ? (Math.abs(n)/1000).toFixed(1)+'k' : Math.abs(n).toFixed(2);
+    return Number(n).toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   }
 
   function updatePriceAge(fetchedAt, stale) {
@@ -1123,15 +1134,14 @@
   });
 
   function openCapitalModal(kind) {
-    const title = kind === 'investment' ? 'Investment amount (net deposited)' : 'Reinvested amount';
+    const title = kind === 'net-deposit' ? 'Net deposit' : 'Currently invested';
     let html = '';
-    if (kind === 'investment') {
-      html = '<p><strong>Investment amount</strong> is net cash you transferred into Trading 212: deposits minus withdrawals and outbound transfers.</p>';
-      html += '<p>This should match the &ldquo;net deposit&rdquo; in your T212 app (e.g. ~£931).</p>';
-      html += '<p>It is not the same as holdings cost basis, which includes reinvested dividends and gains.</p>';
+    if (kind === 'net-deposit') {
+      html = '<p><strong>Net deposit</strong> — cash you paid in minus withdrawals.</p>';
+      html += '<p>Matches &ldquo;Net deposit&rdquo; in the T212 app. Requires API scope <code>history:transactions</code> or <code>NET_DEPOSITS_OVERRIDE</code> in .env.</p>';
     } else {
-      html = '<p><strong>Reinvested amount</strong> = holdings cost basis minus net deposits.</p>';
-      html += '<p>It represents dividends, realised gains, and pie auto-invest put back into stocks without a new deposit from you.</p>';
+      html = '<p><strong>Currently invested</strong> is the cost basis of all positions you still hold.</p>';
+      html += '<p>From T212 <code>investments.totalCost</code>. Difference vs net deposit ≈ reinvested dividends and gains.</p>';
     }
     document.getElementById('dash-modal-title').textContent = title;
     document.getElementById('dash-modal-body').innerHTML = html;

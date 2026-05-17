@@ -5,6 +5,8 @@ import logging
 import os
 from typing import Optional
 
+from .sources.t212 import T212TransactionsScopeError
+
 logger = logging.getLogger(__name__)
 
 
@@ -65,9 +67,17 @@ def sync_capital_from_t212(t212, db, holdings_cost: float) -> dict:
         summary = None
 
     transactions: list[dict] = []
+    tx_error: Optional[str] = None
     try:
         transactions = t212.get_transactions()
+    except T212TransactionsScopeError:
+        tx_error = "missing_transactions_scope"
+        logger.error(
+            "Net deposit unavailable — T212 API key needs the "
+            "history:transactions permission (see T212 → Settings → API)"
+        )
     except Exception:
+        tx_error = "transactions_fetch_failed"
         logger.warning("Could not fetch T212 transactions for capital metrics")
 
     if transactions:
@@ -100,7 +110,13 @@ def sync_capital_from_t212(t212, db, holdings_cost: float) -> dict:
         except ValueError:
             logger.warning("Invalid NET_DEPOSITS_OVERRIDE: %r", override)
 
+    if tx_error:
+        db.set_setting("capital_last_error", tx_error)
+    elif transactions:
+        db.set_setting("capital_last_error", "")
+
     db.save_capital_metrics(metrics)
+    metrics["last_error"] = tx_error
     logger.info(
         "Capital metrics: net_deposits=%s holdings_cost=£%.2f reinvested=%s (%d transactions)",
         metrics.get("net_deposits"),
