@@ -23,6 +23,7 @@ services:
     ports:
       - "8765:8765"
     environment:
+      - TZ=${TZ:-Europe/London}
       - TRADING212_API_KEY=${TRADING212_API_KEY}
       - TRADING212_API_SECRET=${TRADING212_API_SECRET}
       - REPORTS_ENCRYPTION_KEY=${REPORTS_ENCRYPTION_KEY}

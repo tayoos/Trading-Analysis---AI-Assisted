@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from flask import Blueprint, current_app, jsonify, render_template, request
 
 from ..capital import apply_net_deposit, sync_capital_from_t212, sync_pies_from_t212
+from ..time_display import display_timezone_name, format_datetime
 
 bp = Blueprint("sync", __name__)
 logger = logging.getLogger(__name__)
@@ -15,7 +16,6 @@ _sync_lock = threading.Lock()
 
 _KEY_WARN_DAYS  = 60   # amber warning
 _KEY_ALERT_DAYS = 90   # red alert
-
 
 @bp.get("/sync")
 def sync_page():
@@ -37,6 +37,9 @@ def sync_page():
         "sync.html",
         trades=trades,
         last_sync=last_sync,
+        last_sync_display=format_datetime(last_sync),
+        last_backup_display=format_datetime(last_backup),
+        display_timezone=display_timezone_name(),
         capital=capital,
         t212_available=t212.is_available(),
         sync_running=sync_running,

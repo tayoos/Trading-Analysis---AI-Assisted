@@ -230,7 +230,8 @@
     {% endif %}
 
     <div class="card-meta">
-      Last sync: <strong id="last-sync-time">{{ last_sync[:19].replace('T', ' ') + ' UTC' if last_sync else 'Never' }}</strong>
+      Last sync{% if display_timezone %} <span style="color:var(--muted);font-weight:400">({{ display_timezone }})</span>{% endif %}:
+      <strong id="last-sync-time">{{ last_sync_display }}</strong>
       {% if capital.synced_at %}
       <br>Net deposit: <strong>{% if capital.net_deposits is not none %}£{{ '{:,.2f}'.format(capital.net_deposits) }}{% else %}—{% endif %}</strong>
       · Currently invested: <strong>{% if capital.holdings_cost is not none %}£{{ '{:,.2f}'.format(capital.holdings_cost) }}{% else %}—{% endif %}</strong>
@@ -240,18 +241,20 @@
       {% endif %}
     </div>
     <script>
-      (function() {
-        var raw = {{ (last_sync ~ 'Z') | tojson if last_sync else 'null' }};
-        if (raw) {
-          var d = new Date(raw.replace(' ', 'T'));
-          if (!isNaN(d)) {
-            document.getElementById('last-sync-time').textContent = d.toLocaleString([], {
-              year: 'numeric', month: '2-digit', day: '2-digit',
-              hour: '2-digit', minute: '2-digit', second: '2-digit'
-            });
-          }
-        }
-      })();
+      // UTC in DB → display in container TZ ({{ display_timezone or 'browser local' }})
+      window.formatDisplayTime = function(iso) {
+        if (!iso) return 'Never';
+        var d = new Date(iso.endsWith('Z') || iso.includes('+') ? iso : iso + 'Z');
+        if (isNaN(d)) return iso;
+        var opts = {
+          year: 'numeric', month: '2-digit', day: '2-digit',
+          hour: '2-digit', minute: '2-digit', second: '2-digit',
+          hour12: false
+        };
+        var tz = {{ display_timezone | tojson }};
+        if (tz) opts.timeZone = tz;
+        return d.toLocaleString('en-GB', opts);
+      };
     </script>
 
     <div class="action-row">
@@ -336,22 +339,9 @@
         {% endif %}
       </div>
       <div class="bstat">
-        Last backup: <strong id="last-backup-time">{{ last_backup[:19].replace('T', ' ') + ' UTC' if last_backup else 'Never' }}</strong>
+        Last backup{% if display_timezone %} <span style="color:var(--muted);font-weight:400">({{ display_timezone }})</span>{% endif %}:
+        <strong id="last-backup-time">{{ last_backup_display }}</strong>
       </div>
-      <script>
-        (function() {
-          var raw = {{ (last_backup ~ 'Z') | tojson if last_backup else 'null' }};
-          if (raw) {
-            var d = new Date(raw.replace(' ', 'T'));
-            if (!isNaN(d)) {
-              document.getElementById('last-backup-time').textContent = d.toLocaleString([], {
-                year: 'numeric', month: '2-digit', day: '2-digit',
-                hour: '2-digit', minute: '2-digit', second: '2-digit'
-              });
-            }
-          }
-        })();
-      </script>
       <div class="bstat">
         Retention: <strong>{{ backup_retain_days }} days</strong>
       </div>
