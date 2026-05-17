@@ -24,19 +24,20 @@ services:
       - REPORTS_ENCRYPTION_KEY=${REPORTS_ENCRYPTION_KEY}
       - REPORTS_RETENTION_DAYS=365
       - SCHEDULE_DAYS=0,2,5
-      - SCHEDULE_HOUR=7
+      - SCHEDULE_HOUR=3
+      - SCHEDULE_MINUTE=0
+      - SCHEDULE_ENABLED=true
       - DASHBOARD_USER=${DASHBOARD_USER}
       - DASHBOARD_PASSWORD=${DASHBOARD_PASSWORD}
       - TRUSTED_NETWORKS=${TRUSTED_NETWORKS:-127.0.0.1/32,::1/128}
       - BACKUP_RETAIN_DAYS=${BACKUP_RETAIN_DAYS:-60}
     volumes:
-      # ── Primary data on ZFS pool (fast M.2) ─────────────────────────────────
-      # Change the host paths to match your ZFS pool share name.
-      # Example: if your pool is "cache" and share is "appdata":
-      #   /mnt/cache/appdata/stock-analyzer/db
+      # Option A (Unraid template): ${ZFS_APPDATA_PATH}:/data — subdirs auto-created.
+      # Option B (split mounts):
       - ${ZFS_APPDATA_PATH:-/mnt/cache/appdata/stock-analyzer}/db:/data/db
       - ${ZFS_APPDATA_PATH:-/mnt/cache/appdata/stock-analyzer}/reports:/data/reports
       - ${ZFS_APPDATA_PATH:-/mnt/cache/appdata/stock-analyzer}/stocks:/data/stocks
+      - ${ZFS_APPDATA_PATH:-/mnt/cache/appdata/stock-analyzer}/logs:/data/logs
       # ── Backup destination on main Unraid array (parity-protected) ───────────
       - /mnt/user/appdata/stock-analyzer/backups:/data/backups
       # ── Claude credentials (persistent, writable) ─────────────────────────────

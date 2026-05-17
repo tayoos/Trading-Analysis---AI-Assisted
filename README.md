@@ -191,8 +191,11 @@ See `.env.example` for the full annotated list. Key variables:
 | `REPORTS_ENCRYPTION_KEY` | — | Encrypts Excel reports + text files if set |
 | `REPORTS_RETENTION_DAYS` | `365` | Auto-delete reports older than this |
 | `BACKUP_RETAIN_DAYS` | `60` | Auto-delete backups older than this |
-| `SCHEDULE_DAYS` | `0,2,5` | Days to run analysis (0=Mon…6=Sun) |
-| `SCHEDULE_HOUR` | `7` | UTC hour for scheduled runs |
+| `SCHEDULE_ENABLED` | `true` | Automatic sync + analysis on schedule |
+| `SCHEDULE_DAYS` | `0,2,5` | Days to run (0=Mon…6=Sun) — Mon/Wed/Sat |
+| `SCHEDULE_HOUR` | `3` | Hour in `TZ` / `SCHEDULE_TIMEZONE` (default 03:00 London) |
+| `SCHEDULE_MINUTE` | `0` | Minute for scheduled run |
+| `T212_SYNC_ENABLED` | `true` | T212 sync before each scheduled analysis |
 | `COST_METHOD` | `AVCO` | `AVCO` or `FIFO` |
 
 ---

@@ -18,6 +18,24 @@
 
   #status-banner.visible { display: flex; }
 
+  #status-banner.error {
+    background: rgba(239, 83, 80, 0.12);
+    border-bottom: 1px solid rgba(239, 83, 80, 0.35);
+  }
+
+  #status-banner.error .spinner { display: none; }
+
+  #status-banner.error #log-lines {
+    color: #ff8a80;
+    white-space: normal;
+    text-overflow: unset;
+    overflow: visible;
+  }
+
+  #nav-status.error { color: #ff8a80 !important; font-weight: 600; }
+
+  .run-status.error { color: #ff8a80; font-weight: 600; }
+
   #log-lines {
     font-family: monospace;
     font-size: 12px;
@@ -166,14 +184,51 @@
   .card-identity { flex: 1; min-width: 0; }
 
   .card-name {
+    display: flex;
+    align-items: center;
+    gap: 8px;
     font-size: 14px;
     font-weight: 700;
     color: var(--text);
+    letter-spacing: -0.2px;
+    margin-bottom: 2px;
+    min-width: 0;
+  }
+
+  .card-name-text {
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    letter-spacing: -0.2px;
-    margin-bottom: 2px;
+    min-width: 0;
+  }
+
+  .analysis-spinner {
+    display: none;
+    width: 14px;
+    height: 14px;
+    flex-shrink: 0;
+    border: 2px solid rgba(33,150,243,.22);
+    border-top-color: #42a5f5;
+    border-radius: 50%;
+    animation: analysis-spin 0.75s linear infinite;
+  }
+
+  .stock-card.analysing .analysis-spinner,
+  .pie-t212.analysing .analysis-spinner {
+    display: inline-block;
+  }
+
+  .stock-card.analysing {
+    border-color: rgba(33,150,243,.45);
+    box-shadow: 0 0 0 1px rgba(33,150,243,.12);
+  }
+
+  .pie-t212.analysing > .pie-t212-head {
+    background: rgba(33,150,243,.06);
+  }
+
+  @keyframes analysis-spin {
+    to { transform: rotate(360deg); }
   }
 
   .card-sub {
@@ -572,13 +627,16 @@
   .pie-t212-main { flex: 1; min-width: 0; }
 
   .pie-t212-name {
-    display: block;
+    display: flex;
+    align-items: center;
+    gap: 8px;
     font-size: 14px;
     font-weight: 700;
     color: var(--text);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+    min-width: 0;
   }
 
   .pie-t212-sub {
@@ -830,7 +888,10 @@
 
     <div class="card-header">
       <div class="card-identity">
-        <div class="card-name" id="cname-{{ ticker }}">{{ display_name }}</div>
+        <div class="card-name">
+          <span class="analysis-spinner" aria-hidden="true"></span>
+          <span class="card-name-text" id="cname-{{ ticker }}">{{ display_name }}</span>
+        </div>
         <div class="card-sub">{{ ticker }}{% if card.market_ticker and card.market_ticker != ticker %} · quotes {{ card.market_ticker }}{% endif %}{% if card.confidence %} · <span class="conf-badge conf-{{ card.confidence }}">{{ card.confidence }} confidence</span>{% endif %}{% if not has_price and card.price_error %} · <span style="color:var(--hold-short)">no market quote</span>{% elif card.price_source == 't212' %} · <span style="color:var(--muted)">T212 price</span>{% endif %}</div>
       </div>
       <span class="badge badge-{{ rec }}">{{ rec | replace('_', ' ') }}</span>
@@ -1045,6 +1106,51 @@
   setInterval(() => { if (!document.hidden) refreshPrices(); }, 5 * 60 * 1000);
 
   // ── Status polling ──────────────────────────────────────────────────────────
+  function parseAnalysingTicker(d) {
+    if (d.current_ticker) return d.current_ticker;
+    const lines = d.progress || [];
+    for (let i = lines.length - 1; i >= 0; i--) {
+      const m = String(lines[i]).match(/Analysing\s+(\S+?)…/);
+      if (m) return m[1];
+    }
+    return null;
+  }
+
+  function updateAnalysingHighlight(ticker) {
+    const active = ticker || null;
+    document.querySelectorAll('.stock-card[data-ticker], .pie-t212[data-ticker]').forEach(el => {
+      el.classList.toggle('analysing', active && el.dataset.ticker === active);
+    });
+  }
+
+  function showAnalysisError(d) {
+    const banner = document.getElementById('status-banner');
+    const logEl  = document.getElementById('log-lines');
+    const navEl  = document.getElementById('nav-status');
+    const runEl  = document.getElementById('run-status-text');
+    const msg = d.error_message || 'Analysis failed. Check container logs for details.';
+
+    banner.className = 'visible error';
+    logEl.textContent = msg;
+
+    let navText = 'Analysis failed';
+    if (d.error_kind === 'quota') {
+      navText = 'Out of Claude tokens / usage limit';
+    } else if (d.error_kind === 'auth') {
+      navText = 'Claude not logged in';
+    }
+    navEl.textContent = navText;
+    navEl.className = 'error';
+    runEl.textContent = msg;
+    runEl.className = 'run-status error';
+  }
+
+  function clearAnalysisErrorUi() {
+    document.getElementById('nav-status').className = '';
+    document.getElementById('run-status-text').className = 'run-status';
+    document.getElementById('run-status-text').textContent = '';
+  }
+
   async function pollStatus() {
     try {
       const r = await fetch('/api/status');
@@ -1052,22 +1158,39 @@
       const banner = document.getElementById('status-banner');
       const logEl  = document.getElementById('log-lines');
       const btn    = document.getElementById('run-btn');
+      const navEl  = document.getElementById('nav-status');
 
       if (d.status === 'running') {
         banner.className = 'visible';
+        clearAnalysisErrorUi();
         const lines = d.progress || [];
         logEl.textContent = lines.length ? lines[lines.length - 1] : 'Running…';
         btn.disabled = true;
-        document.getElementById('nav-status').textContent = 'Analysis running…';
+        const current = parseAnalysingTicker(d);
+        updateAnalysingHighlight(current);
+        navEl.textContent = current
+          ? `Analysing ${current}…`
+          : 'Analysis running…';
         if (!polling) polling = true;
         setTimeout(pollStatus, 2000);
+      } else if (d.status === 'error') {
+        btn.disabled = false;
+        updateAnalysingHighlight(null);
+        showAnalysisError(d);
+        if (polling) {
+          polling = false;
+        }
       } else {
         banner.className = '';
         btn.disabled = false;
-        document.getElementById('nav-status').textContent = d.status === 'done' ? 'Last run complete ✓' : '';
-        if (polling && d.status !== 'running') {
+        updateAnalysingHighlight(null);
+        clearAnalysisErrorUi();
+        navEl.textContent = d.status === 'done' ? 'Last run complete ✓' : '';
+        if (polling && d.status === 'done') {
           polling = false;
           location.reload();
+        } else if (polling) {
+          polling = false;
         }
       }
     } catch(e) {
@@ -1078,6 +1201,8 @@
   async function triggerRun() {
     const btn = document.getElementById('run-btn');
     btn.disabled = true;
+    clearAnalysisErrorUi();
+    document.getElementById('status-banner').className = '';
     try {
       const r = await fetch('/api/run', { method: 'POST' });
       if (r.ok) {

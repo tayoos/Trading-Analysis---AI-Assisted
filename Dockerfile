@@ -14,7 +14,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY app/ ./app/
 COPY templates/ ./templates/
 COPY entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh && mkdir -p /home/appuser
+COPY gunicorn_logging.conf /app/gunicorn_logging.conf
+RUN chmod +x /entrypoint.sh && mkdir -p /home/appuser /data/logs
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \

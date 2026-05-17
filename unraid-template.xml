@@ -30,7 +30,7 @@
   <!-- ── Volumes ────────────────────────────────────────────────────────────── -->
   <Config Name="Data directory" Target="/data"
           Default="/mnt/user/appdata/stock-analyzer"
-          Description="All app data (database, reports, stocks input, backups) is stored here. Subdirectories are created automatically on first start."
+          Description="App data root (db, reports, stocks, logs, backups). The logs/ subfolder is created automatically on first start — no extra mapping needed."
           Type="Path" Display="always" Required="true" Mask="false">
     /mnt/user/appdata/stock-analyzer
   </Config>
@@ -88,9 +88,17 @@
           Description="Comma-separated day numbers (0=Mon … 6=Sun). Default: 0,2,5 = Mon/Wed/Sat."
           Type="Variable" Display="advanced" Required="false" Mask="false">0,2,5</Config>
 
-  <Config Name="Analysis Schedule Hour (UTC)" Target="SCHEDULE_HOUR" Default="7"
-          Description="Hour (UTC) at which the scheduled analysis runs. Default: 7 = 07:00 UTC."
-          Type="Variable" Display="advanced" Required="false" Mask="false">7</Config>
+  <Config Name="Schedule Enabled" Target="SCHEDULE_ENABLED" Default="true"
+          Description="Run automatic T212 sync + analysis on schedule. Manual runs from the dashboard always work."
+          Type="Variable" Display="advanced" Required="false" Mask="false">true</Config>
+
+  <Config Name="Schedule Hour" Target="SCHEDULE_HOUR" Default="3"
+          Description="Hour (in Timezone below) for automatic sync + analysis. Default: 3 = 03:00."
+          Type="Variable" Display="advanced" Required="false" Mask="false">3</Config>
+
+  <Config Name="Schedule Minute" Target="SCHEDULE_MINUTE" Default="0"
+          Description="Minute for the scheduled run. Default: 0."
+          Type="Variable" Display="advanced" Required="false" Mask="false">0</Config>
 
   <!-- ── Backup ─────────────────────────────────────────────────────────────── -->
   <Config Name="Backup Retention Days" Target="BACKUP_RETAIN_DAYS" Default="60"
@@ -99,7 +107,7 @@
 
   <!-- ── Misc ───────────────────────────────────────────────────────────────── -->
   <Config Name="Timezone" Target="TZ" Default="Europe/London"
-          Description="How sync/backup times are shown on the Sync page. Stored timestamps stay UTC; display uses this zone (e.g. Europe/London shows GMT in winter, BST in summer)."
+          Description="Timezone for scheduled sync/analysis (Mon/Wed/Sat 3am by default) and how times are shown on the Sync page. Stored timestamps stay UTC."
           Type="Variable" Display="always" Required="false" Mask="false">Europe/London</Config>
 
   <Config Name="Cost Method" Target="COST_METHOD" Default="AVCO"

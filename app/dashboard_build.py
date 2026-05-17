@@ -6,6 +6,7 @@ from __future__ import annotations
 from collections import defaultdict
 
 from .capital import format_pie_icon
+from .ticker_resolve import _is_valid_yf_symbol
 
 PIE_TICKER_PREFIX = "PIE:"
 
@@ -66,7 +67,7 @@ def build_card(
         card["unrealized_pnl"] = float(p["unrealized_pnl"])
 
     quote_sym = _quote_symbol(ticker, p)
-    if quote_sym != ticker:
+    if quote_sym != ticker and _is_valid_yf_symbol(quote_sym):
         card["market_ticker"] = quote_sym
 
     # Live market price: recalculate value only when we trust the quote (no T212 wallet

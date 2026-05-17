@@ -13,8 +13,15 @@ from typing import Optional
 import yfinance as yf
 from claude_agent_sdk import ClaudeAgentOptions, ResultMessage, query
 
+from .analysis_errors import AnalysisQuotaError, classify_analysis_error
 from .database import Database
 from .prices import _ticker_candidates
+from .ticker_resolve import resolve_market_ticker
+
+_STALE_HANDOFF_MARKERS = (
+    "$0", "0.0000", "worthless", "total loss", "illiquid",
+    "no market", "zero probability", "confirmed total loss",
+)
 
 logger = logging.getLogger(__name__)
 
@@ -68,6 +75,9 @@ class StockAnalyzer:
         self._run_id: Optional[int] = None
         self._status: str = "idle"   # idle | running | done | error
         self._progress: list[str] = []
+        self._current_ticker: Optional[str] = None
+        self._error_kind: Optional[str] = None
+        self._error_message: Optional[str] = None
 
     # ── Status (thread-safe) ───────────────────────────────────────────────────
 
@@ -78,11 +88,31 @@ class StockAnalyzer:
                 "status": self._status,
                 "run_id": self._run_id,
                 "progress": list(self._progress),
+                "current_ticker": self._current_ticker,
+                "error_kind": self._error_kind,
+                "error_message": self._error_message,
             }
 
-    def _set_status(self, status: str) -> None:
+    def _set_status(
+        self,
+        status: str,
+        error_kind: Optional[str] = None,
+        error_message: Optional[str] = None,
+    ) -> None:
         with self._lock:
             self._status = status
+            if status != "running":
+                self._current_ticker = None
+            if status == "error":
+                self._error_kind = error_kind
+                self._error_message = error_message
+            elif status in ("idle", "running", "done"):
+                self._error_kind = None
+                self._error_message = None
+
+    def _set_current_ticker(self, ticker: Optional[str]) -> None:
+        with self._lock:
+            self._current_ticker = ticker
 
     def _log(self, msg: str) -> None:
         logger.info(msg)
@@ -106,31 +136,58 @@ class StockAnalyzer:
             self._run_id = run_id
             self._status = "running"
             self._progress = []
+            self._current_ticker = None
+            self._error_kind = None
+            self._error_message = None
 
         self._log(f"[{_ts()}] Starting analysis for {len(holdings)} holdings")
+
+        saved_count = 0
+        quota_message: Optional[str] = None
 
         try:
             for holding in holdings:
                 ticker = holding["ticker"]
+                self._set_current_ticker(ticker)
                 try:
                     self._log(f"[{_ts()}] Analysing {ticker}…")
                     result = self._analyse_ticker(holding)
                     self.db.save_analysis(run_id, ticker, result)
+                    saved_count += 1
                     if "handoff_note" in result:
                         self.db.save_handoff_note(ticker, result["handoff_note"])
                     self._log(f"[{_ts()}] {ticker} → {result.get('recommendation', '?')}")
+                except AnalysisQuotaError as exc:
+                    quota_message = str(exc)
+                    self._log(f"[{_ts()}] Stopping run — {quota_message}")
+                    break
                 except Exception as exc:
+                    kind, user_msg = classify_analysis_error(exc)
                     self._log(f"[{_ts()}] ERROR {ticker}: {exc}")
                     logger.exception("Analysis failed for %s", ticker)
+                    if kind == "quota":
+                        quota_message = user_msg
+                        self._log(f"[{_ts()}] Stopping run — {user_msg}")
+                        break
 
-            self.db.finish_run(run_id, "done", len(holdings))
-            self._log(f"[{_ts()}] Analysis complete.")
-            self._set_status("done")
+            self._set_current_ticker(None)
+
+            if quota_message:
+                self.db.finish_run(run_id, "error", saved_count)
+                self._log(f"[{_ts()}] Analysis stopped: {quota_message}")
+                self._set_status("error", "quota", quota_message)
+            else:
+                self.db.finish_run(run_id, "done", saved_count)
+                self._log(f"[{_ts()}] Analysis complete.")
+                _generate_run_reports(self.db, run_id, self._log)
+                self._set_status("done")
 
         except Exception as exc:
-            self.db.finish_run(run_id, "error", 0)
+            self._set_current_ticker(None)
+            kind, user_msg = classify_analysis_error(exc)
+            self.db.finish_run(run_id, "error", saved_count)
             self._log(f"[{_ts()}] Fatal error: {exc}")
-            self._set_status("error")
+            self._set_status("error", kind, user_msg)
             logger.exception("Fatal error during analysis run")
 
         return run_id
@@ -147,7 +204,7 @@ class StockAnalyzer:
                 "current_price": holding.get("current_price"),
             }
         else:
-            market_ticker = holding.get("market_ticker") or ticker
+            market_ticker = _ensure_market_ticker(holding, self.db)
             if market_ticker != ticker:
                 self._log(
                     f"[{_ts()}] {ticker}: fetching market data as {market_ticker} "
@@ -158,6 +215,7 @@ class StockAnalyzer:
             market_data = _fetch_market_data(market_ticker)
             market_data["t212_ticker"] = ticker
             market_data["market_ticker"] = market_ticker
+            _merge_t212_price(holding, market_data)
 
         price = market_data.get("current_price")
         pe = market_data.get("pe_ratio")
@@ -171,10 +229,17 @@ class StockAnalyzer:
             f"EPS-growth={eps_g}%  earnings={earnings}"
         )
 
-        handoff_note = self.db.get_handoff_note(ticker)
+        handoff_note = _handoff_for_analysis(
+            self.db.get_handoff_note(ticker),
+            holding.get("current_price"),
+        )
         if handoff_note:
             thesis = (handoff_note.get("thesis_summary") or "")[:80]
             self._log(f"[{_ts()}] {ticker}: memory loaded — \"{thesis}\"")
+        elif self.db.get_handoff_note(ticker) and (holding.get("current_price") or 0) > 0.05:
+            self._log(
+                f"[{_ts()}] {ticker}: skipped stale handoff (contradicts T212 live price)"
+            )
 
         self._log(f"[{_ts()}] {ticker}: sending to Claude AI for analysis…")
         prompt = _build_prompt(holding, market_data, handoff_note)
@@ -253,15 +318,95 @@ def _call_claude_sync(prompt: str) -> str:
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     try:
-        return loop.run_until_complete(_call_claude_async(prompt))
+        raw = loop.run_until_complete(_call_claude_async(prompt))
+    except Exception as exc:
+        kind, user_msg = classify_analysis_error(exc)
+        if kind == "quota":
+            raise AnalysisQuotaError(user_msg) from exc
+        raise
     finally:
         loop.close()
+
+    if not (raw or "").strip():
+        raise RuntimeError("Empty response from Claude")
+    return raw
 
 
 # ── Market data ────────────────────────────────────────────────────────────────
 
 def _ts() -> str:
     return datetime.now(timezone.utc).strftime("%H:%M:%S")
+
+
+def _generate_run_reports(db: Database, run_id: int, log_fn) -> None:
+    """Write Excel + text reports after a successful analysis run."""
+    try:
+        analyses = db.get_analyses_for_run(run_id)
+        if not analyses:
+            return
+        from .reports import ReportGenerator
+
+        gen = ReportGenerator()
+        xlsx = gen.generate_excel(run_id, analyses)
+        txt = gen.generate_text(run_id, analyses)
+        log_fn(f"[{_ts()}] Reports: {xlsx} | {txt}")
+    except Exception as exc:
+        logger.exception("Report generation failed for run %s: %s", run_id, exc)
+        log_fn(f"[{_ts()}] Report generation failed: {exc}")
+
+
+def _ensure_market_ticker(holding: dict, db: Database) -> str:
+    """Resolve yfinance symbol before analysis; persist when it changes."""
+    ticker = holding["ticker"]
+    market = resolve_market_ticker(
+        ticker,
+        isin=holding.get("isin"),
+        instrument_name=holding.get("instrument_name"),
+        reference_price=holding.get("current_price"),
+        instrument_currency=holding.get("instrument_currency"),
+    )
+    if market != (holding.get("market_ticker") or ticker):
+        db.update_position_market_ticker(ticker, market)
+    holding["market_ticker"] = market
+    return market
+
+
+def _merge_t212_price(holding: dict, market_data: dict) -> None:
+    """Prefer T212 wallet price for the position; flag bad yfinance symbol matches."""
+    t212 = holding.get("current_price")
+    if t212 is None or float(t212) <= 0:
+        return
+    t212 = float(t212)
+    yf = market_data.get("current_price")
+    market_data["t212_current_price"] = t212
+    if yf and float(yf) > 0:
+        ratio = float(yf) / t212
+        if ratio < 0.12 or ratio > 8.0:
+            market_data["price_source_note"] = (
+                f"Public quote ({market_data.get('market_ticker', '?')}) "
+                f"≈ {float(yf):.4f} does not match Trading 212 ({t212:.4f}); "
+                "use T212 for position valuation."
+            )
+    market_data["current_price"] = t212
+
+
+def _handoff_for_analysis(
+    handoff: Optional[dict],
+    t212_price: Optional[float],
+) -> Optional[dict]:
+    """Drop handoff memory that assumes worthlessness while T212 shows a live price."""
+    if not handoff or not t212_price or float(t212_price) < 0.05:
+        return handoff
+    blob = " ".join(
+        str(handoff.get(k, ""))
+        for k in (
+            "thesis_summary", "watch_items", "ongoing_risks",
+            "ongoing_catalysts", "trend_flags",
+        )
+    ).lower()
+    if any(m in blob for m in _STALE_HANDOFF_MARKERS):
+        return None
+    return handoff
 
 
 def _fetch_market_data(ticker: str) -> dict:
@@ -372,6 +517,7 @@ def _build_prompt(holding: dict, market_data: dict, handoff_note: Optional[dict]
     shares = holding.get("shares", 0)
     cost   = holding.get("avg_cost", 0)
     price  = market_data.get("current_price") or 0
+    t212_px = market_data.get("t212_current_price")
     pnl_pct = ((price - cost) / cost * 100) if cost else 0
     pnl_abs = (price - cost) * shares if (price and cost) else 0
 
@@ -383,8 +529,14 @@ def _build_prompt(holding: dict, market_data: dict, handoff_note: Optional[dict]
         lines.append(f"Trading 212 instrument code: {ticker}")
     if market_ticker and market_ticker.upper() != ticker.upper():
         lines.append(
-            f"Market data symbol (use for fundamentals/news): {market_ticker}"
+            f"Market data symbol (fundamentals/news only): {market_ticker}"
         )
+    if market_data.get("price_source_note"):
+        lines.append(f"IMPORTANT: {market_data['price_source_note']}")
+    lines.append(
+        "\nDo not classify this as a worthless or $0 security if Trading 212 "
+        "shows a positive live price and the position has meaningful value."
+    )
 
     if handoff_note:
         lines.append("\n### Memory from previous run")
@@ -402,10 +554,15 @@ def _build_prompt(holding: dict, market_data: dict, handoff_note: Optional[dict]
         if cats:
             lines.append("Ongoing catalysts: " + " | ".join(cats))
 
-    lines.append("\n### Portfolio position")
+    lines.append("\n### Portfolio position (Trading 212 — authoritative)")
     lines.append(f"Shares held: {shares}")
     lines.append(f"Average cost: {cost:.4f}")
-    lines.append(f"Current price: {price:.4f}")
+    if t212_px:
+        lines.append(f"Current price (T212): {float(t212_px):.4f}")
+    else:
+        lines.append(f"Current price: {price:.4f}")
+    if holding.get("position_value") is not None:
+        lines.append(f"Position value (T212): {float(holding['position_value']):.2f}")
     lines.append(f"Unrealised P&L: {pnl_abs:+.2f} ({pnl_pct:+.1f}%)")
 
     lines.append("\n### Market data")
