@@ -1,6 +1,7 @@
 import logging
 import os
 import time
+import urllib.parse as up
 from typing import Optional
 
 import requests
@@ -11,7 +12,8 @@ logger = logging.getLogger(__name__)
 
 _BASE_URL = "https://live.trading212.com"
 _TIMEOUT = 15
-_FILLED_STATUSES = {"FILLED", "EXECUTED", "COMPLETED"}  # accept all "done" statuses
+# History endpoints allow 6 requests/min — pace to ~10s between pages
+_HISTORY_PAGE_DELAY = 10.0
 
 
 class T212DataSource(DataSource):
@@ -44,7 +46,7 @@ class T212DataSource(DataSource):
             positions.append(Position(
                 ticker=ticker,
                 shares=float(item.get("quantity", 0)),
-                avg_cost=float(item.get("averagePrice", 0)),
+                avg_cost=float(item.get("averagePricePaid", 0)),
             ))
         logger.info("T212 ✓ %d positions", len(positions))
         return positions
@@ -67,29 +69,36 @@ class T212DataSource(DataSource):
             next_cursor = data.get("nextPagePath")
 
             if page == 1 and items:
-                sample_statuses = list({i.get("status") for i in items[:10]})
-                logger.info("T212   sample statuses from page 1: %s", sample_statuses)
+                # Each item is {"fill": {...}, "order": {...}}
+                sample_statuses = list({i.get("order", {}).get("status") for i in items[:10]})
+                logger.info("T212   sample order statuses from page 1: %s", sample_statuses)
 
-            filled = sum(1 for i in items if i.get("status") in _FILLED_STATUSES)
+            filled = sum(1 for i in items if i.get("order", {}).get("status") == "FILLED")
             logger.info("T212   page %d: %d items, %d filled, has_next=%s",
                         page, len(items), filled, bool(next_cursor))
 
             for item in items:
-                if item.get("status") not in _FILLED_STATUSES:
+                order = item.get("order", {})
+                fill  = item.get("fill", {})
+
+                if order.get("status") != "FILLED":
                     continue
-                if since and item.get("dateModified", "") <= since:
+
+                filled_at = fill.get("filledAt") or order.get("dateModified", "")
+                if since and filled_at <= since:
                     logger.info("T212   reached already-synced cutoff (%s) — stopping early", since)
                     return trades
-                trade = self._parse_order(item)
+
+                trade = self._parse_order(order, fill)
                 if trade:
                     trades.append(trade)
 
             if not next_cursor or not items:
                 break
-            import urllib.parse as up
             qs = up.urlparse(next_cursor).query
             cursor = up.parse_qs(qs).get("cursor", [None])[0]
-            time.sleep(0.25)
+            logger.info("T212   pacing %.0fs before next orders page (rate limit: 6 req/min)", _HISTORY_PAGE_DELAY)
+            time.sleep(_HISTORY_PAGE_DELAY)
 
         logger.info("T212 ✓ fetched %d trades across %d page(s)", len(trades), page)
         return trades
@@ -129,10 +138,10 @@ class T212DataSource(DataSource):
 
             if not next_cursor or not items:
                 break
-            import urllib.parse as up
             qs = up.urlparse(next_cursor).query
             cursor = up.parse_qs(qs).get("cursor", [None])[0]
-            time.sleep(0.25)
+            logger.info("T212   pacing %.0fs before next dividends page (rate limit: 6 req/min)", _HISTORY_PAGE_DELAY)
+            time.sleep(_HISTORY_PAGE_DELAY)
 
         logger.info("T212 ✓ fetched %d dividends across %d page(s)", len(results), page)
         return results
@@ -148,7 +157,7 @@ class T212DataSource(DataSource):
                     reset_ts = resp.headers.get("x-ratelimit-reset")
                     if reset_ts:
                         raw_wait = int(reset_ts) - int(time.time()) + 1
-                        wait = max(min(raw_wait, 20), 10)
+                        wait = max(min(raw_wait, 60), 10)
                     else:
                         wait = 15
                     logger.warning("T212 rate limited on %s — waiting %ds (attempt %d/10)", path, wait, attempt + 1)
@@ -164,22 +173,26 @@ class T212DataSource(DataSource):
                 raise
         raise RuntimeError(f"T212 rate limit retries exhausted after 10 attempts for {path}")
 
-    def _parse_order(self, item: dict) -> Optional[Trade]:
-        ticker = self._normalise_ticker(item.get("ticker", ""))
+    def _parse_order(self, order: dict, fill: dict) -> Optional[Trade]:
+        """Parse a T212 HistoricalOrder's nested order+fill dicts into a Trade."""
+        ticker = self._normalise_ticker(order.get("ticker", ""))
         if not ticker:
             return None
-        qty = float(item.get("filledQuantity", 0))
-        action = "BUY" if qty > 0 else "SELL"
-        qty = abs(qty)
-        price = float(item.get("fillPrice", 0))
+        action = order.get("side", "").upper()  # "BUY" or "SELL"
+        if action not in ("BUY", "SELL"):
+            qty = float(order.get("filledQuantity", 0))
+            action = "BUY" if qty >= 0 else "SELL"
+        qty = abs(float(order.get("filledQuantity", 0)))
+        price = float(fill.get("price", 0))
+        traded_at = fill.get("filledAt") or order.get("dateModified", "")
         return Trade(
-            order_id=str(item.get("id", "")),
+            order_id=str(order.get("id", "")),
             ticker=ticker,
             action=action,
             quantity=qty,
             price=price,
             total_value=qty * price,
-            traded_at=item.get("dateModified", ""),
+            traded_at=traded_at,
         )
 
     @staticmethod
