@@ -116,14 +116,16 @@ class T212DataSource(DataSource):
                 else None
             )
             inst_name = instrument.get("name") or None
+            isin = instrument.get("isin") or None
             logger.debug(
-                "T212   position %s: qty=%.4f avg_cost=%.4f price=%s value=%s inst_ccy=%s",
+                "T212   position %s: qty=%.4f avg_cost=%.4f price=%s value=%s inst_ccy=%s isin=%s",
                 ticker,
                 qty,
                 avg_cost,
                 current_price,
                 position_value,
                 inst_currency or "?",
+                isin or "?",
             )
             positions.append(Position(
                 ticker=ticker,
@@ -133,6 +135,9 @@ class T212DataSource(DataSource):
                 instrument_name=inst_name,
                 position_value=position_value,
                 unrealized_pnl=unrealized,
+                t212_raw_ticker=raw_ticker or None,
+                isin=isin,
+                instrument_currency=inst_currency,
             ))
         logger.info("T212 ✓ %d positions", len(positions))
         return positions

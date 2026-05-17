@@ -91,9 +91,22 @@ def create_app() -> Flask:
 
     # ── Startup price refresh ──────────────────────────────────────────────────
     try:
-        tickers = [p["ticker"] for p in db.get_positions()]
+        positions = db.get_positions()
+        if positions and any(not p.get("market_ticker") for p in positions):
+            try:
+                from .ticker_resolve import refresh_market_tickers
+                n = refresh_market_tickers(db)
+                if n:
+                    logger.info("Resolved market tickers for %d position(s)", n)
+                positions = db.get_positions()
+            except Exception:
+                logger.exception("Market ticker resolution failed at startup")
+        tickers = [p["ticker"] for p in positions]
+        market_map = {
+            p["ticker"]: p.get("market_ticker") or p["ticker"] for p in positions
+        }
         if tickers:
-            price_cache.refresh_in_background(tickers)
+            price_cache.refresh_in_background(tickers, market_map)
             logger.info("Kicked background price refresh for %d positions at startup", len(tickers))
     except Exception:
         logger.exception("Startup price refresh failed")

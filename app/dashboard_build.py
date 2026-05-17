@@ -18,6 +18,12 @@ def is_pie_ticker(ticker: str) -> bool:
     return ticker.startswith(PIE_TICKER_PREFIX)
 
 
+def _quote_symbol(ticker: str, position: dict | None) -> str:
+    """yfinance symbol for market quotes (may differ from T212 DB key)."""
+    p = position or {}
+    return (p.get("market_ticker") or ticker).upper()
+
+
 def build_card(
     analysis: dict | None,
     position: dict | None,
@@ -59,10 +65,17 @@ def build_card(
     if p.get("unrealized_pnl") is not None:
         card["unrealized_pnl"] = float(p["unrealized_pnl"])
 
+    quote_sym = _quote_symbol(ticker, p)
+    if quote_sym != ticker:
+        card["market_ticker"] = quote_sym
+
     # Live market price: recalculate value only when we trust the quote (no T212 wallet
     # or price is in the same ballpark — avoids UK pence symbols like TM1L → £0.07).
-    if ticker in live_prices and shares > 0:
-        live = float(live_prices[ticker])
+    live_key = quote_sym if quote_sym in live_prices else (
+        ticker if ticker in live_prices else None
+    )
+    if live_key and shares > 0:
+        live = float(live_prices[live_key])
         t212_px = card.get("current_price")
         use_live = t212_value is None or (
             t212_px
@@ -113,8 +126,10 @@ def build_dashboard_view(
     positions_market_value = 0.0
     for p in positions:
         ticker = p["ticker"]
+        quote_sym = _quote_symbol(ticker, p)
         price = (
-            live_prices.get(ticker)
+            live_prices.get(quote_sym)
+            or live_prices.get(ticker)
             or (analysis_map.get(ticker) or {}).get("current_price")
             or p["avg_cost"]
         )

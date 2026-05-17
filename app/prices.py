@@ -46,13 +46,21 @@ class LivePriceCache:
         with self._lock:
             return self._prices.get(ticker)
 
-    def refresh(self, tickers: list[str]) -> dict:
+    def refresh(
+        self,
+        tickers: list[str],
+        market_map: dict[str, str] | None = None,
+    ) -> dict:
         """
         Fetch live prices for the given tickers synchronously.
+        `market_map` maps DB/T212 keys → yfinance symbols when they differ.
         Returns the new price snapshot.
         """
         if not tickers:
             return self.get_prices()
+
+        market_map = market_map or {}
+        entries = [(t, market_map.get(t) or t) for t in tickers]
 
         with self._lock:
             if self._refreshing:
@@ -62,14 +70,14 @@ class LivePriceCache:
             self._refreshing = True
 
         try:
-            prices, errors = _fetch_prices(tickers)
+            prices, errors = _fetch_prices(entries)
         finally:
             with self._lock:
                 self._refreshing = False
 
         with self._lock:
-            self._prices     = prices
-            self._errors     = errors
+            self._prices.update(prices)
+            self._errors.update(errors)
             self._fetched_at = time.time()
 
         logger.info(
@@ -77,28 +85,38 @@ class LivePriceCache:
             len(prices), len(errors),
             ", ".join(f"{t}={p:.2f}" for t, p in sorted(prices.items())),
         )
-        # Fetch company names for any tickers not yet cached (background, non-blocking)
         with self._lock:
             missing = [t for t in tickers if t not in self._names]
         if missing:
-            self._fetch_names(missing)
+            self._fetch_names(missing, market_map)
         return self.get_prices()
 
-    def refresh_in_background(self, tickers: list[str]) -> None:
+    def refresh_in_background(
+        self,
+        tickers: list[str],
+        market_map: dict[str, str] | None = None,
+    ) -> None:
         """Kick off a non-blocking refresh."""
         t = threading.Thread(
             target=self.refresh,
-            args=(tickers,),
+            args=(tickers, market_map),
             daemon=True,
             name="price-refresh",
         )
         t.start()
 
-    def _fetch_names(self, tickers: list[str]) -> None:
-        from concurrent.futures import ThreadPoolExecutor, as_completed
+    def _fetch_names(
+        self,
+        tickers: list[str],
+        market_map: dict[str, str] | None = None,
+    ) -> None:
+        from concurrent.futures import ThreadPoolExecutor
+
+        market_map = market_map or {}
 
         def _one(ticker: str) -> tuple[str, str]:
-            for candidate in _ticker_candidates(ticker):
+            yf_sym = market_map.get(ticker) or ticker
+            for candidate in _ticker_candidates(yf_sym):
                 try:
                     info = yf.Ticker(candidate).info
                     name = info.get("shortName") or info.get("longName") or ""
@@ -149,19 +167,22 @@ def _ticker_candidates(ticker: str) -> list[str]:
     return out
 
 
-def _fetch_prices(tickers: list[str]) -> tuple[dict[str, float], dict[str, str]]:
+def _fetch_prices(
+    entries: list[tuple[str, str]],
+) -> tuple[dict[str, float], dict[str, str]]:
     """
     Batch-fetch latest prices from yfinance.
+    `entries` is (db_ticker, yfinance_symbol) pairs; prices are keyed by db_ticker.
     Returns (prices_dict, errors_dict).
     """
     prices: dict[str, float] = {}
     errors: dict[str, str]   = {}
+    yf_symbols = list(dict.fromkeys(yf for _, yf in entries))
 
-    # yfinance batch download is faster than one Ticker() per symbol
     try:
         data = yf.download(
-            tickers,
-            period="2d",        # 2 days so we always get at least one close
+            yf_symbols,
+            period="2d",
             interval="1d",
             auto_adjust=True,
             progress=False,
@@ -169,41 +190,38 @@ def _fetch_prices(tickers: list[str]) -> tuple[dict[str, float], dict[str, str]]
         )
     except Exception as exc:
         logger.error("yfinance batch download failed: %s", exc)
-        # Fall back to per-ticker fetches
         data = None
 
+    yf_prices: dict[str, float] = {}
     if data is not None and not data.empty:
         close = data["Close"] if "Close" in data.columns else data
-        for ticker in tickers:
+        for yf_sym in yf_symbols:
             try:
-                col = close[ticker] if ticker in close.columns else close
+                col = close[yf_sym] if yf_sym in close.columns else close
                 val = col.dropna().iloc[-1]
-                prices[ticker] = float(val)
+                yf_prices[yf_sym] = float(val)
             except Exception:
-                errors[ticker] = "no data in batch"
+                pass
 
-        # Tickers that failed in batch — try individually
-        failed = [t for t in tickers if t not in prices]
-    else:
-        failed = list(tickers)
-
-    for ticker in failed:
-        resolved = False
-        # Try the ticker as-is, then with .L suffix (London-listed stocks)
-        for candidate in _ticker_candidates(ticker):
+    failed_yf = [s for s in yf_symbols if s not in yf_prices]
+    for yf_sym in failed_yf:
+        for candidate in _ticker_candidates(yf_sym):
             try:
                 fast = yf.Ticker(candidate).fast_info
                 price = fast.last_price
                 if price:
-                    prices[ticker] = float(price)
-                    if candidate != ticker:
-                        logger.info("Resolved %s via %s", ticker, candidate)
-                    resolved = True
+                    yf_prices[yf_sym] = float(price)
+                    if candidate != yf_sym:
+                        logger.info("Resolved %s via %s", yf_sym, candidate)
                     break
             except Exception:
                 pass
-        if not resolved:
-            errors[ticker] = "no data from yfinance"
+
+    for db_ticker, yf_sym in entries:
+        if yf_sym in yf_prices:
+            prices[db_ticker] = yf_prices[yf_sym]
+        else:
+            errors[db_ticker] = "no data from yfinance"
 
     if errors:
         logger.warning("Live price fetch failed for: %s", ", ".join(errors))

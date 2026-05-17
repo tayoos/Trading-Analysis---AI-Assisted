@@ -14,6 +14,7 @@ import yfinance as yf
 from claude_agent_sdk import ClaudeAgentOptions, ResultMessage, query
 
 from .database import Database
+from .prices import _ticker_candidates
 
 logger = logging.getLogger(__name__)
 
@@ -146,8 +147,17 @@ class StockAnalyzer:
                 "current_price": holding.get("current_price"),
             }
         else:
-            self._log(f"[{_ts()}] {ticker}: fetching market data from yfinance")
-            market_data = _fetch_market_data(ticker)
+            market_ticker = holding.get("market_ticker") or ticker
+            if market_ticker != ticker:
+                self._log(
+                    f"[{_ts()}] {ticker}: fetching market data as {market_ticker} "
+                    f"(T212 code {ticker})"
+                )
+            else:
+                self._log(f"[{_ts()}] {ticker}: fetching market data from yfinance")
+            market_data = _fetch_market_data(market_ticker)
+            market_data["t212_ticker"] = ticker
+            market_data["market_ticker"] = market_ticker
 
         price = market_data.get("current_price")
         pe = market_data.get("pe_ratio")
@@ -256,7 +266,17 @@ def _ts() -> str:
 
 def _fetch_market_data(ticker: str) -> dict:
     try:
-        stock = yf.Ticker(ticker)
+        stock = None
+        used_symbol = ticker
+        for candidate in _ticker_candidates(ticker):
+            stock = yf.Ticker(candidate)
+            fast = stock.fast_info
+            if fast.last_price and float(fast.last_price) > 0:
+                used_symbol = candidate
+                break
+        if stock is None:
+            stock = yf.Ticker(ticker)
+            used_symbol = ticker
         fast = stock.fast_info
         info = stock.info  # full info — P/E, EPS, analyst targets, earnings date
         hist = stock.history(period="30d")
@@ -298,7 +318,7 @@ def _fetch_market_data(ticker: str) -> dict:
                 pass
 
         return {
-            "ticker": ticker,
+            "ticker": used_symbol,
             "current_price": current_price,
             "week_52_high": float(fast.fifty_two_week_high) if fast.fifty_two_week_high else None,
             "week_52_low":  float(fast.fifty_two_week_low)  if fast.fifty_two_week_low  else None,
@@ -355,7 +375,16 @@ def _build_prompt(holding: dict, market_data: dict, handoff_note: Optional[dict]
     pnl_pct = ((price - cost) / cost * 100) if cost else 0
     pnl_abs = (price - cost) * shares if (price and cost) else 0
 
-    lines = [f"## Position: {ticker}"]
+    company = holding.get("instrument_name") or ""
+    market_ticker = holding.get("market_ticker") or market_data.get("ticker") or ticker
+    title = company if company else ticker
+    lines = [f"## Position: {title}"]
+    if company and company.upper() != ticker.upper():
+        lines.append(f"Trading 212 instrument code: {ticker}")
+    if market_ticker and market_ticker.upper() != ticker.upper():
+        lines.append(
+            f"Market data symbol (use for fundamentals/news): {market_ticker}"
+        )
 
     if handoff_note:
         lines.append("\n### Memory from previous run")
