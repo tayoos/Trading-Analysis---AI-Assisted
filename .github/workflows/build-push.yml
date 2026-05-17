@@ -1,18 +1,23 @@
 name: Build and push Docker image
 
 on:
-  push:
-    branches: [main]
   pull_request:
     branches: [main]
+    types: [opened, synchronize, reopened, closed]
 
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
 
+concurrency:
+  group: docker-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
+    # Skip closed events that were not merged (e.g. PR closed without merging)
+    if: github.event.action != 'closed' || github.event.pull_request.merged == true
     permissions:
       contents: read
       packages: write
@@ -20,6 +25,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.merged && github.event.pull_request.merge_commit_sha || github.event.pull_request.head.sha }}
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -38,20 +45,20 @@ jobs:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
             type=sha,prefix=
-            type=raw,value=latest,enable=${{ github.event_name == 'push' }}
+            type=raw,value=latest,enable=${{ github.event.pull_request.merged == true }}
 
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
           context: .
-          push: ${{ github.event_name == 'push' }}
+          push: ${{ github.event.pull_request.merged == true }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
       - name: Make package public
-        if: github.event_name == 'push'
+        if: github.event.pull_request.merged == true
         continue-on-error: true
         run: |
           PACKAGE_NAME=$(echo "${{ github.repository }}" | cut -d'/' -f2 | tr '[:upper:]' '[:lower:]')
