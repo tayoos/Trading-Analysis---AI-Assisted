@@ -9,6 +9,30 @@ from .sources.t212 import T212TransactionsScopeError
 
 logger = logging.getLogger(__name__)
 
+MANUAL_NET_DEPOSIT_KEY = "capital_net_deposit_manual"
+
+
+def apply_net_deposit(db, amount: float, *, source: str = "manual") -> dict:
+    """Persist net deposit (manual entry or override) and recompute reinvested."""
+    amount = round(float(amount), 2)
+    if source == "manual":
+        db.set_setting(MANUAL_NET_DEPOSIT_KEY, str(amount))
+    metrics = db.get_capital_metrics()
+    cost = metrics.get("holdings_cost")
+    if cost is None:
+        cost = 0.0
+    reinvested = max(0.0, round(float(cost) - amount, 2)) if cost else None
+    out = {
+        "net_deposits": amount,
+        "holdings_cost": round(float(cost), 2) if cost else None,
+        "reinvested": reinvested,
+    }
+    db.save_capital_metrics(out)
+    if source == "manual":
+        db.set_setting("capital_last_error", "")
+    logger.info("Net deposit set (%s): £%.2f", source, amount)
+    return db.get_capital_metrics()
+
 
 def net_deposits_from_transactions(transactions: list[dict]) -> float:
     """
@@ -83,6 +107,13 @@ def sync_capital_from_t212(t212, db, holdings_cost: float) -> dict:
     if transactions:
         metrics = compute_capital_metrics(transactions, holdings_cost, summary)
         metrics["transaction_count"] = len(transactions)
+        dep = sum(1 for t in transactions if (t.get("type") or "").upper() == "DEPOSIT")
+        logger.info(
+            "Transactions: %d total, %d deposits → net deposit £%.2f",
+            len(transactions),
+            dep,
+            metrics["net_deposits"],
+        )
     else:
         # Do not overwrite a good cached net deposit when the API returns nothing
         logger.warning(
@@ -98,6 +129,22 @@ def sync_capital_from_t212(t212, db, holdings_cost: float) -> dict:
         }
         if metrics["net_deposits"] is not None:
             metrics["reinvested"] = max(0.0, round(metrics["holdings_cost"] - metrics["net_deposits"], 2))
+
+    manual = (db.get_setting(MANUAL_NET_DEPOSIT_KEY) or "").strip()
+    if manual and not override:
+        try:
+            metrics["net_deposits"] = round(float(manual), 2)
+            metrics["reinvested"] = max(
+                0.0,
+                round(metrics["holdings_cost"] - metrics["net_deposits"], 2),
+            )
+            if tx_error:
+                logger.info(
+                    "Using saved net deposit £%.2f (T212 transactions unavailable)",
+                    metrics["net_deposits"],
+                )
+        except ValueError:
+            logger.warning("Invalid %s: %r", MANUAL_NET_DEPOSIT_KEY, manual)
 
     if override:
         try:
