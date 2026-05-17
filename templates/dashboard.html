@@ -451,7 +451,11 @@
     z-index: 1000;
     padding: 24px;
     overflow-y: auto;
+    align-items: flex-start;
+    justify-content: center;
   }
+
+  #dash-modal.open { display: flex; }
 
   .dash-modal-box {
     background: var(--surface);
@@ -517,10 +521,8 @@
     color: var(--buy);
   }
 
-  /* ── Pies section ───────────────────────────────────────────────────── */
-  .pies-section {
-    padding: 16px 24px 0;
-  }
+  /* ── Pies (T212-inspired) ───────────────────────────────────────────── */
+  .pies-section { padding: 16px 24px 0; }
 
   .pies-heading {
     font-size: 12px;
@@ -531,76 +533,168 @@
     margin-bottom: 12px;
   }
 
-  .pie-block {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-left: 3px solid #7c4dff;
-    border-radius: var(--radius);
-    margin-bottom: 14px;
+  .pie-t212 {
+    background: linear-gradient(135deg, rgba(124,77,255,.08) 0%, var(--surface) 40%);
+    border: 1px solid rgba(124,77,255,.22);
+    border-radius: 12px;
+    margin-bottom: 10px;
     overflow: hidden;
+    transition: border-color 0.15s;
   }
 
-  .pie-block > summary {
+  .pie-t212[open] { border-color: rgba(124,77,255,.45); }
+
+  .pie-t212-head {
     list-style: none;
     cursor: pointer;
-    padding: 14px 18px;
+    padding: 14px 16px;
     display: flex;
     align-items: center;
     gap: 12px;
-    flex-wrap: wrap;
+    user-select: none;
   }
 
-  .pie-block > summary::-webkit-details-marker { display: none; }
+  .pie-t212-head::-webkit-details-marker { display: none; }
 
-  .pie-name {
+  .pie-t212-icon {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    background: rgba(124,77,255,.15);
+    border: 2px solid rgba(124,77,255,.35);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 22px;
+    flex-shrink: 0;
+  }
+
+  .pie-t212-main { flex: 1; min-width: 0; }
+
+  .pie-t212-name {
+    display: block;
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .pie-t212-sub {
+    display: block;
+    font-size: 11px;
+    color: var(--muted);
+    margin-top: 2px;
+  }
+
+  .pie-t212-stats {
+    text-align: right;
+    flex-shrink: 0;
+  }
+
+  .pie-t212-value {
+    display: block;
     font-size: 15px;
     font-weight: 700;
     color: var(--text);
-    flex: 1;
   }
 
-  .pie-meta {
+  .pie-t212-pnl {
+    display: block;
     font-size: 11px;
+    font-weight: 600;
+    margin-top: 2px;
+  }
+
+  .pie-t212-badge { flex-shrink: 0; }
+
+  .pie-t212-chevron {
     color: var(--muted);
-    display: flex;
-    gap: 14px;
-    flex-wrap: wrap;
+    font-size: 18px;
+    transform: rotate(0deg);
+    transition: transform 0.15s;
+    flex-shrink: 0;
   }
 
-  .pie-body {
-    border-top: 1px solid var(--border);
-    padding: 14px 18px 18px;
+  .pie-t212[open] .pie-t212-chevron { transform: rotate(90deg); }
+
+  .pie-t212-body {
+    border-top: 1px solid rgba(124,77,255,.15);
+    padding: 12px 16px 16px;
+    background: rgba(0,0,0,.12);
   }
 
-  .pie-combined {
+  .pie-t212-analysis {
     background: var(--surface2);
-    border: 1px solid var(--border);
     border-radius: 8px;
     padding: 12px 14px;
     margin-bottom: 14px;
     font-size: 12px;
   }
 
-  .pie-combined .reasoning { color: var(--text); margin-top: 8px; line-height: 1.55; }
+  .pie-t212-analysis.empty {
+    color: var(--muted);
+    margin: 0 0 14px;
+    padding: 0;
+    background: none;
+  }
 
-  .pie-members-label {
+  .pie-t212-analysis-label {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: #b388ff;
+    margin-bottom: 6px;
+  }
+
+  .pie-t212-analysis .reasoning {
+    color: var(--text);
+    line-height: 1.55;
+  }
+
+  .pie-t212-holdings-label {
     font-size: 10px;
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.5px;
     color: var(--muted);
-    margin-bottom: 10px;
+    margin-bottom: 8px;
   }
 
-  .pie-members-grid {
+  .pie-t212-holdings {
+    background: var(--surface);
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    overflow: hidden;
+  }
+
+  .pie-holding-row {
     display: grid;
+    grid-template-columns: 1fr auto auto auto;
     gap: 10px;
-    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    align-items: center;
+    padding: 10px 14px;
+    border-top: 1px solid var(--border);
+    cursor: pointer;
+    transition: background 0.12s;
   }
 
-  .stock-card.compact .card-header { padding: 12px 14px 4px; }
-  .stock-card.compact .spark-wrap { display: none; }
-  .stock-card.compact .holdings-strip { padding: 0 14px 10px; }
+  .pie-holding-row:first-child { border-top: none; }
+  .pie-holding-row:hover { background: var(--surface2); }
+
+  .pie-holding-ticker {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text);
+  }
+
+  .pie-holding-meta { font-size: 11px; color: var(--muted); }
+
+  .pie-holding-pnl { font-size: 12px; font-weight: 600; }
+
+  .pie-holding-rec { font-size: 10px; padding: 2px 6px; }
 
   .standalone-heading {
     font-size: 12px;
@@ -608,7 +702,7 @@
     text-transform: uppercase;
     letter-spacing: 0.6px;
     color: var(--muted);
-    padding: 8px 24px 0;
+    padding: 14px 24px 0;
   }
 </style>
 {% endblock %}
@@ -640,13 +734,13 @@
   </div>
   <div class="s-card clickable" onclick="openCapitalModal('investment')" title="Money you deposited minus withdrawals">
     <div class="s-label">Investment amount</div>
-    <div class="s-value" id="s-invested">—</div>
-    <div class="s-sub">Net deposited</div>
+    <div class="s-value" id="s-invested">{% if capital.net_deposits is not none %}£{{ '%.2f'|format(capital.net_deposits) }}{% else %}—{% endif %}</div>
+    <div class="s-sub">Net deposited{% if capital.net_deposits is none %} · sync T212{% endif %}</div>
   </div>
   <div class="s-card clickable" onclick="openCapitalModal('reinvested')" title="Dividends and gains reinvested into holdings">
     <div class="s-label">Reinvested amount</div>
-    <div class="s-value" id="s-reinvested">—</div>
-    <div class="s-sub">Holdings cost <span id="s-holdings-cost">—</span></div>
+    <div class="s-value" id="s-reinvested">{% if capital.reinvested is not none %}£{{ '%.2f'|format(capital.reinvested) }}{% else %}—{% endif %}</div>
+    <div class="s-sub">Holdings cost <span id="s-holdings-cost">{% if capital.holdings_cost is not none %}£{{ '%.2f'|format(capital.holdings_cost) }}{% else %}—{% endif %}</span></div>
   </div>
   <div class="s-card">
     <div class="s-label">Total P&amp;L</div>
@@ -855,7 +949,7 @@
       const d = await r.json();
       const s = d.summary;
       document.getElementById('s-value').textContent = '£' + fmt(s.total_value);
-      if (s.net_deposits != null) {
+      if (s.net_deposits != null && s.net_deposits_known !== false) {
         document.getElementById('s-invested').textContent = '£' + fmt(s.net_deposits);
       } else {
         document.getElementById('s-invested').textContent = '—';
@@ -1013,10 +1107,20 @@
   pollStatus();
 
   // ── Collapsible analysis sections ──────────────────────────────────────────
-  function closeDashModal(e) {
-    if (!e || e.target === document.getElementById('dash-modal'))
-      document.getElementById('dash-modal').style.display = 'none';
+  function openDashModal() {
+    document.getElementById('dash-modal').classList.add('open');
+    document.body.style.overflow = 'hidden';
   }
+
+  function closeDashModal(e) {
+    if (e && e.target !== document.getElementById('dash-modal')) return;
+    document.getElementById('dash-modal').classList.remove('open');
+    document.body.style.overflow = '';
+  }
+
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') closeDashModal();
+  });
 
   function openCapitalModal(kind) {
     const title = kind === 'investment' ? 'Investment amount (net deposited)' : 'Reinvested amount';
@@ -1031,13 +1135,13 @@
     }
     document.getElementById('dash-modal-title').textContent = title;
     document.getElementById('dash-modal-body').innerHTML = html;
-    document.getElementById('dash-modal').style.display = 'block';
+    openDashModal();
   }
 
   async function openDividendModal() {
     document.getElementById('dash-modal-title').textContent = 'Dividend payments';
     document.getElementById('dash-modal-body').innerHTML = '<p>Loading…</p>';
-    document.getElementById('dash-modal').style.display = 'block';
+    openDashModal();
     try {
       const r = await fetch('/api/dividends');
       const d = await r.json();
@@ -1067,10 +1171,12 @@
       const clone = el.cloneNode(true);
       clone.removeAttribute('onclick');
       html = clone.outerHTML;
+    } else {
+      html = '<p>This stock is held inside a pie. Sync and run analysis for full detail.</p>';
     }
     html += '<a class="modal-stock-link" href="/ticker/' + ticker + '">Open full ' + ticker + ' page →</a>';
     document.getElementById('dash-modal-body').innerHTML = html;
-    document.getElementById('dash-modal').style.display = 'block';
+    openDashModal();
   }
 
   function toggleAnalysis(btn) {

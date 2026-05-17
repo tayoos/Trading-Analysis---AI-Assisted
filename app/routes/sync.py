@@ -93,11 +93,15 @@ def sync_t212():
             _reconcile_positions(t212, db)
 
             with _sync_lock:
-                _sync_state["message"] = "Syncing pies and capital metrics…"
+                _sync_state["message"] = "Syncing capital metrics…"
             holdings_cost = sum(
                 p["shares"] * p["avg_cost"] for p in db.get_positions()
             )
+            # Fetch transactions before pie detail calls exhaust the rate limit
             sync_capital_from_t212(t212, db, holdings_cost)
+
+            with _sync_lock:
+                _sync_state["message"] = "Syncing pies…"
             sync_pies_from_t212(t212, db)
 
             with _sync_lock:
