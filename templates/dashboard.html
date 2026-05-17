@@ -181,7 +181,56 @@
     color: var(--muted);
     font-weight: 500;
     letter-spacing: 0.2px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
   }
+
+  .conf-badge {
+    display: inline-block;
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.3px;
+    text-transform: uppercase;
+  }
+
+  .conf-HIGH   { background: rgba(0,200,150,.12);  color: #00c896; border: 1px solid rgba(0,200,150,.25); }
+  .conf-MEDIUM { background: rgba(255,152,0,.12);  color: #ff9800; border: 1px solid rgba(255,152,0,.25); }
+  .conf-LOW    { background: rgba(107,116,153,.12); color: #8890b0; border: 1px solid rgba(107,116,153,.25); }
+
+  /* ── Expand toggle ──────────────────────────────────────────────────── */
+  .expand-btn {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    background: none;
+    border: none;
+    border-top: 1px solid var(--border);
+    padding: 8px 16px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    cursor: pointer;
+    text-align: left;
+    transition: color 0.15s, background 0.15s;
+    border-radius: 0;
+  }
+
+  .expand-btn:hover { color: var(--text); background: var(--surface2); }
+
+  .expand-chevron {
+    font-size: 13px;
+    transition: transform 0.2s;
+    display: inline-block;
+  }
+
+  .expand-chevron.open { transform: rotate(90deg); }
 
   /* ── Sparkline ──────────────────────────────────────────────────────── */
   .spark-wrap {
@@ -492,7 +541,7 @@
     <div class="card-header">
       <div class="card-identity">
         <div class="card-name" id="cname-{{ ticker }}">{{ ticker }}</div>
-        <div class="card-sub">{{ ticker }}{% if card.confidence %} · {{ card.confidence }}{% endif %}</div>
+        <div class="card-sub">{{ ticker }}{% if card.confidence %} · <span class="conf-badge conf-{{ card.confidence }}">{{ card.confidence }} confidence</span>{% endif %}</div>
       </div>
       <span class="badge badge-{{ rec }}">{{ rec | replace('_', ' ') }}</span>
     </div>
@@ -528,66 +577,77 @@
       </div>
     </div>
 
-    {% if card.pe_ratio or card.analyst_target_mean or card.next_earnings or card.eps_growth_pct is not none %}
-    <div class="fund-strip">
-      {% if card.pe_ratio %}<span class="fp">P/E <strong>{{ card.pe_ratio }}</strong></span>{% endif %}
-      {% if card.eps_growth_pct is not none %}<span class="fp">EPS <strong>{{ '%+.0f'|format(card.eps_growth_pct) }}%</strong></span>{% endif %}
-      {% if card.analyst_target_mean %}<span class="fp">Analyst <strong>{{ '%.2f'|format(card.analyst_target_mean) }}</strong>{% if card.analyst_consensus %} <em style="color:var(--muted)">{{ card.analyst_consensus|upper }}</em>{% endif %}</span>{% endif %}
-      {% if card.next_earnings %}<span class="fp">Earnings <strong>{{ card.next_earnings }}</strong></span>{% endif %}
-    </div>
-    {% endif %}
+    {% set has_detail = card.reasoning or card.pe_ratio or card.analyst_target_mean or card.next_earnings or (card.eps_growth_pct is not none) or card.price_target_30d or card.outlook_90d or (hn and hn.thesis_summary) %}
+    {% if has_detail %}
+    <button class="expand-btn" onclick="event.stopPropagation(); toggleAnalysis(this)" aria-label="Toggle analysis">
+      <span>Analysis</span>
+      <span class="expand-chevron">›</span>
+    </button>
+    <div class="card-detail" style="display:none">
 
-    {% if card.reasoning %}
-    <div class="card-body">
-      {% if card.news_sentiment %}
-      <span class="sent-pill sent-{{ card.news_sentiment }}">{{ card.news_sentiment }}</span>
+      {% if card.pe_ratio or card.analyst_target_mean or card.next_earnings or card.eps_growth_pct is not none %}
+      <div class="fund-strip">
+        {% if card.pe_ratio %}<span class="fp">P/E <strong>{{ card.pe_ratio }}</strong></span>{% endif %}
+        {% if card.eps_growth_pct is not none %}<span class="fp">EPS <strong>{{ '%+.0f'|format(card.eps_growth_pct) }}%</strong></span>{% endif %}
+        {% if card.analyst_target_mean %}<span class="fp">Analyst <strong>{{ '%.2f'|format(card.analyst_target_mean) }}</strong>{% if card.analyst_consensus %} <em style="color:var(--muted)">{{ card.analyst_consensus|upper }}</em>{% endif %}</span>{% endif %}
+        {% if card.next_earnings %}<span class="fp">Earnings <strong>{{ card.next_earnings }}</strong></span>{% endif %}
+      </div>
       {% endif %}
-      <div class="reasoning">{{ card.reasoning or '' }}</div>
 
-      <div class="tag-groups">
-        {% if card.catalysts %}
-        <div class="tag-row">
-          <span class="tag-lbl cat">Catalysts</span>
-          {% for c in (card.catalysts or [])[:3] %}<span class="tag-pill cat">{{ c }}</span>{% endfor %}
+      {% if card.reasoning %}
+      <div class="card-body">
+        {% if card.news_sentiment %}
+        <span class="sent-pill sent-{{ card.news_sentiment }}">{{ card.news_sentiment }}</span>
+        {% endif %}
+        <div class="reasoning">{{ card.reasoning or '' }}</div>
+
+        <div class="tag-groups">
+          {% if card.catalysts %}
+          <div class="tag-row">
+            <span class="tag-lbl cat">Catalysts</span>
+            {% for c in (card.catalysts or [])[:3] %}<span class="tag-pill cat">{{ c }}</span>{% endfor %}
+          </div>
+          {% endif %}
+          {% if card.risks %}
+          <div class="tag-row">
+            <span class="tag-lbl risk">Risks</span>
+            {% for r in (card.risks or [])[:2] %}<span class="tag-pill risk">{{ r }}</span>{% endfor %}
+          </div>
+          {% endif %}
+        </div>
+      </div>
+      {% endif %}
+
+      {% if card.price_target_30d or card.outlook_90d %}
+      <div class="card-footer">
+        {% if card.price_target_30d %}
+        <div class="cf-item">
+          <span class="cf-label">30d target</span>
+          <span class="cf-val">{{ '%.2f'|format(card.price_target_30d) }}</span>
+        </div>
+        {% if card.price_target_lo %}
+        <div class="cf-item">
+          <span class="cf-label">range</span>
+          <span class="cf-val">{{ '%.2f'|format(card.price_target_lo) }} – {{ '%.2f'|format(card.price_target_hi) }}</span>
         </div>
         {% endif %}
-        {% if card.risks %}
-        <div class="tag-row">
-          <span class="tag-lbl risk">Risks</span>
-          {% for r in (card.risks or [])[:2] %}<span class="tag-pill risk">{{ r }}</span>{% endfor %}
+        {% endif %}
+        {% if card.outlook_90d %}
+        <div class="cf-item" style="flex:1;min-width:0">
+          <span class="cf-label">90d</span>
+          <span style="color:var(--muted);font-size:11px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis">{{ card.outlook_90d }}</span>
         </div>
         {% endif %}
       </div>
-    </div>
-    {% endif %}
+      {% endif %}
 
-    {% if card.price_target_30d or card.outlook_90d %}
-    <div class="card-footer">
-      {% if card.price_target_30d %}
-      <div class="cf-item">
-        <span class="cf-label">30d target</span>
-        <span class="cf-val">{{ '%.2f'|format(card.price_target_30d) }}</span>
-      </div>
-      {% if card.price_target_lo %}
-      <div class="cf-item">
-        <span class="cf-label">range</span>
-        <span class="cf-val">{{ '%.2f'|format(card.price_target_lo) }} – {{ '%.2f'|format(card.price_target_hi) }}</span>
+      {% if hn and hn.thesis_summary %}
+      <div class="mem-bar">
+        <span class="mem-icon">🧠</span>
+        <span class="mem-thesis">{{ hn.thesis_summary }}</span>
       </div>
       {% endif %}
-      {% endif %}
-      {% if card.outlook_90d %}
-      <div class="cf-item" style="flex:1;min-width:0">
-        <span class="cf-label">90d</span>
-        <span style="color:var(--muted);font-size:11px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis">{{ card.outlook_90d }}</span>
-      </div>
-      {% endif %}
-    </div>
-    {% endif %}
 
-    {% if hn and hn.thesis_summary %}
-    <div class="mem-bar">
-      <span class="mem-icon">🧠</span>
-      <span class="mem-thesis">{{ hn.thesis_summary }}</span>
     </div>
     {% endif %}
 
@@ -750,6 +810,15 @@
 
   loadSummary();
   pollStatus();
+
+  // ── Collapsible analysis sections ──────────────────────────────────────────
+  function toggleAnalysis(btn) {
+    const detail = btn.nextElementSibling;
+    const chevron = btn.querySelector('.expand-chevron');
+    const isOpen = detail.style.display !== 'none';
+    detail.style.display = isOpen ? 'none' : 'block';
+    chevron.classList.toggle('open', !isOpen);
+  }
 
   // Inject company names from server-side data
   const _names = {{ company_names | tojson }};
