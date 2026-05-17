@@ -45,8 +45,7 @@ def dashboard_data():
     analysis_map = {a["ticker"]: a for a in analyses}
     pos_map      = {p["ticker"]: p for p in positions}
 
-    # Live prices from cache (populated by /api/prices/refresh).
-    # Priority: live cache → last analysis price → avg_cost (neutral P&L).
+    # Live prices: cache → last analysis price → avg_cost (neutral P&L)
     cached       = price_cache.get_prices()
     live_prices  = cached["prices"]
     prices_stale = cached["stale"]
@@ -60,26 +59,27 @@ def dashboard_data():
                   or p["avg_cost"])
         total_value += price * p["shares"]
 
+    analysed = set()
     cards = []
     for a in analyses:
         p = pos_map.get(a["ticker"], {})
         if not a.get("cost_basis") and p:
             a["cost_basis"] = p.get("avg_cost")
             a["shares"]     = p.get("shares")
-        # Inject live price into card so per-card P&L uses latest price
         if a["ticker"] in live_prices:
             a["current_price"] = live_prices[a["ticker"]]
+        analysed.add(a["ticker"])
         cards.append({**a, "handoff_note": handoff_notes.get(a["ticker"])})
 
     summary = {
-        "total_value":    round(total_value, 2),
-        "total_cost":     round(total_cost, 2),
-        "total_pnl":      round(total_value - total_cost, 2),
-        "total_pnl_pct":  round((total_value - total_cost) / total_cost * 100, 2) if total_cost else 0,
-        "position_count": len(positions),
-        "prices_stale":   prices_stale,
+        "total_value":       round(total_value, 2),
+        "total_cost":        round(total_cost, 2),
+        "total_pnl":         round(total_value - total_cost, 2),
+        "total_pnl_pct":     round((total_value - total_cost) / total_cost * 100, 2) if total_cost else 0,
+        "position_count":    len(positions),
+        "prices_stale":      prices_stale,
         "prices_fetched_at": cached["fetched_at"],
-        "dividends":      db.get_dividend_stats(),
+        "dividends":         db.get_dividend_stats(),
     }
 
     return jsonify({"summary": summary, "cards": cards})

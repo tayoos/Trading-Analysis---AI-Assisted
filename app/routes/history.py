@@ -7,7 +7,7 @@ bp = Blueprint("history", __name__)
 def history_page():
     db = current_app.extensions["db"]
     runs = db.list_runs(limit=50)
-    return render_template("history.html", runs=runs)
+    return render_template("history.html", runs=runs, active_page="history")
 
 
 @bp.get("/api/trades")

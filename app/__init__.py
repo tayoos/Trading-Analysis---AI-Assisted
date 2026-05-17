@@ -70,6 +70,15 @@ def create_app() -> Flask:
     # ── Scheduler ──────────────────────────────────────────────────────────────
     _setup_scheduler(app, analyzer, portfolio, t212, backup)
 
+    # ── Self-heal: rebuild positions if trades exist but positions table is empty ─
+    try:
+        if db.get_trades(limit=1) and not db.get_positions():
+            logger.info("Trades found but no positions — auto-rebuilding positions from trade history")
+            portfolio._rebuild_positions()
+            logger.info("Auto-rebuild complete: %d positions written", len(db.get_positions()))
+    except Exception:
+        logger.exception("Auto-rebuild of positions failed — trigger a sync to retry")
+
     return app
 
 
@@ -325,11 +334,26 @@ def _analysis_job(app: Flask, analyzer: StockAnalyzer, portfolio: PortfolioManag
 
 
 def main() -> None:
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
-    )
+    import os
+    from logging.handlers import RotatingFileHandler
+
+    log_dir = "/data/logs"
+    os.makedirs(log_dir, exist_ok=True)
+
+    fmt     = "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+    datefmt = "%Y-%m-%d %H:%M:%S"
+    handlers: list[logging.Handler] = [logging.StreamHandler()]
+    try:
+        handlers.append(RotatingFileHandler(
+            os.path.join(log_dir, "app.log"),
+            maxBytes=5 * 1024 * 1024,
+            backupCount=5,
+            encoding="utf-8",
+        ))
+    except OSError:
+        pass  # /data not mounted yet at startup (shouldn't happen)
+
+    logging.basicConfig(level=logging.INFO, format=fmt, datefmt=datefmt, handlers=handlers)
     try:
         app = create_app()
     except Exception:
