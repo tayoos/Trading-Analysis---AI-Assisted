@@ -36,13 +36,14 @@ def get_status():
 @bp.get("/api/dashboard")
 def dashboard_data():
     db = current_app.extensions["db"]
-    analyses = db.get_latest_analyses()
+    analyses  = db.get_latest_analyses()
     positions = db.get_positions()
-    pos_map = {p["ticker"]: p for p in positions}
+    pos_map   = {p["ticker"]: p for p in positions}
+    handoff_notes = db.get_all_handoff_notes()  # single query, not N queries
 
     cards = []
     total_value = 0.0
-    total_cost = 0.0
+    total_cost  = 0.0
 
     for a in analyses:
         p = pos_map.get(a["ticker"], {})
@@ -51,16 +52,15 @@ def dashboard_data():
         price  = a.get("current_price") or 0
         total_value += price * shares
         total_cost  += cost * shares
-
-        handoff = db.get_handoff_note(a["ticker"])
-        cards.append({**a, "handoff_note": handoff})
+        cards.append({**a, "handoff_note": handoff_notes.get(a["ticker"])})
 
     summary = {
-        "total_value":   round(total_value, 2),
-        "total_cost":    round(total_cost, 2),
-        "total_pnl":     round(total_value - total_cost, 2),
-        "total_pnl_pct": round((total_value - total_cost) / total_cost * 100, 2) if total_cost else 0,
+        "total_value":    round(total_value, 2),
+        "total_cost":     round(total_cost, 2),
+        "total_pnl":      round(total_value - total_cost, 2),
+        "total_pnl_pct":  round((total_value - total_cost) / total_cost * 100, 2) if total_cost else 0,
         "position_count": len(cards),
+        "dividends":      db.get_dividend_stats(),
     }
 
     return jsonify({"summary": summary, "cards": cards})

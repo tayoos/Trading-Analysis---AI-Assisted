@@ -434,6 +434,38 @@ class Database:
             ).fetchall()
             return [dict(r) for r in rows]
 
+    def get_dividend_stats(self) -> dict:
+        """Aggregate dividend stats for dashboard: all-time, last 30d, last 7d."""
+        with self._conn() as conn:
+            def total(where: str, params=()):
+                row = conn.execute(
+                    f"SELECT COALESCE(SUM(amount), 0) as t FROM dividends{where}", params
+                ).fetchone()
+                return round(float(row["t"]), 2)
+
+            return {
+                "all_time":  total(""),
+                "last_30d":  total(" WHERE paid_at >= date('now', '-30 days')"),
+                "last_7d":   total(" WHERE paid_at >= date('now', '-7 days')"),
+                "count":     conn.execute("SELECT COUNT(*) as c FROM dividends").fetchone()["c"],
+            }
+
+    def get_all_handoff_notes(self) -> dict:
+        """Returns all handoff notes keyed by ticker — single query."""
+        with self._conn() as conn:
+            rows = conn.execute("SELECT * FROM handoff_notes").fetchall()
+        result = {}
+        for row in rows:
+            note = dict(row)
+            for field in ("watch_items", "trend_flags", "ongoing_risks", "ongoing_catalysts"):
+                if isinstance(note.get(field), str):
+                    try:
+                        note[field] = json.loads(note[field])
+                    except (json.JSONDecodeError, TypeError):
+                        note[field] = []
+            result[note["ticker"]] = note
+        return result
+
     # ── Settings (key-value store) ─────────────────────────────────────────────
 
     def get_setting(self, key: str) -> Optional[str]:

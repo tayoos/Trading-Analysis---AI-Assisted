@@ -11,6 +11,7 @@ logger = logging.getLogger(__name__)
 
 _BASE_URL = "https://live.trading212.com"
 _TIMEOUT = 15
+_FILLED_STATUSES = {"FILLED", "EXECUTED", "COMPLETED"}  # accept all "done" statuses
 
 
 class T212DataSource(DataSource):
@@ -64,12 +65,17 @@ class T212DataSource(DataSource):
 
             items = data.get("items", [])
             next_cursor = data.get("nextPagePath")
-            filled = sum(1 for i in items if i.get("status") == "FILLED")
-            logger.info("T212   page %d: %d items, %d FILLED, has_next=%s",
+
+            if page == 1 and items:
+                sample_statuses = list({i.get("status") for i in items[:10]})
+                logger.info("T212   sample statuses from page 1: %s", sample_statuses)
+
+            filled = sum(1 for i in items if i.get("status") in _FILLED_STATUSES)
+            logger.info("T212   page %d: %d items, %d filled, has_next=%s",
                         page, len(items), filled, bool(next_cursor))
 
             for item in items:
-                if item.get("status") != "FILLED":
+                if item.get("status") not in _FILLED_STATUSES:
                     continue
                 if since and item.get("dateModified", "") <= since:
                     logger.info("T212   reached already-synced cutoff (%s) — stopping early", since)
