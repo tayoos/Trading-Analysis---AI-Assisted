@@ -134,7 +134,19 @@ def _ticker_candidates(ticker: str) -> list[str]:
     """Return yfinance ticker variants to try in order (UK listings often need .L)."""
     if "." in ticker:
         return [ticker]
-    return [ticker, f"{ticker}.L"]
+    candidates = [ticker, f"{ticker}.L"]
+    # T212 often uses e.g. TM1L for LSE symbol TM1.L
+    if len(ticker) > 2 and ticker[-1] == "L" and ticker[-2].isalpha():
+        base = ticker[:-1]
+        candidates.insert(0, f"{base}.L")
+    # dedupe preserving order
+    seen: set[str] = set()
+    out: list[str] = []
+    for c in candidates:
+        if c not in seen:
+            seen.add(c)
+            out.append(c)
+    return out
 
 
 def _fetch_prices(tickers: list[str]) -> tuple[dict[str, float], dict[str, str]]:

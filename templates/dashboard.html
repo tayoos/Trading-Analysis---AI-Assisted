@@ -829,7 +829,7 @@
     <div class="card-header">
       <div class="card-identity">
         <div class="card-name" id="cname-{{ ticker }}">{{ display_name }}</div>
-        <div class="card-sub">{{ ticker }}{% if card.confidence %} · <span class="conf-badge conf-{{ card.confidence }}">{{ card.confidence }} confidence</span>{% endif %}{% if not has_price and card.price_error %} · <span style="color:var(--hold-short)">no live price</span>{% endif %}</div>
+        <div class="card-sub">{{ ticker }}{% if card.confidence %} · <span class="conf-badge conf-{{ card.confidence }}">{{ card.confidence }} confidence</span>{% endif %}{% if not has_price and card.price_error %} · <span style="color:var(--hold-short)">no market quote</span>{% elif card.price_source == 't212' %} · <span style="color:var(--muted)">T212 price</span>{% endif %}</div>
       </div>
       <span class="badge badge-{{ rec }}">{{ rec | replace('_', ' ') }}</span>
     </div>
