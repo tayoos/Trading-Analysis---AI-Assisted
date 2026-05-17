@@ -15,23 +15,24 @@ _TIMEOUT = 15
 class T212DataSource(DataSource):
     """Trading 212 REST API v0 client."""
 
-    def __init__(self, api_key: Optional[str] = None):
-        self._api_key = api_key or os.getenv("TRADING212_API_KEY", "")
+    def __init__(self, api_key: Optional[str] = None, api_secret: Optional[str] = None):
+        self._api_key    = api_key    or os.getenv("TRADING212_API_KEY", "")
+        self._api_secret = api_secret or os.getenv("TRADING212_API_SECRET", "")
         self._session = requests.Session()
-        if self._api_key:
-            self._session.headers.update({"Authorization": self._api_key})
+        if self._api_key and self._api_secret:
+            self._session.auth = (self._api_key, self._api_secret)
 
     @property
     def name(self) -> str:
         return "trading212"
 
     def is_available(self) -> bool:
-        return bool(self._api_key)
+        return bool(self._api_key and self._api_secret)
 
     # ── Public interface ───────────────────────────────────────────────────────
 
     def get_positions(self) -> list[Position]:
-        data = self._get("/api/v0/equity/portfolio")
+        data = self._get("/api/v0/equity/positions")
         positions = []
         for item in data:
             ticker = self._normalise_ticker(item.get("ticker", ""))
@@ -52,7 +53,7 @@ class T212DataSource(DataSource):
         while True:
             if cursor:
                 params["cursor"] = cursor
-            data = self._get("/api/v0/history/orders", params=params)
+            data = self._get("/api/v0/equity/history/orders", params=params)
 
             items = data.get("items", [])
             next_cursor = data.get("nextPagePath")
@@ -87,7 +88,7 @@ class T212DataSource(DataSource):
         while True:
             if cursor:
                 params["cursor"] = cursor
-            data = self._get("/api/v0/history/dividends", params=params)
+            data = self._get("/api/v0/equity/history/dividends", params=params)
 
             items = data.get("items", [])
             next_cursor = data.get("nextPagePath")

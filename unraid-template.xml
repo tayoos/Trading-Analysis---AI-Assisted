@@ -54,6 +54,10 @@
           Description="T212 API Key. In T212: Settings → API → Create key. Read-only scope is sufficient."
           Type="Variable" Display="always" Required="false" Mask="true"/>
 
+  <Config Name="Trading 212 API Secret" Target="TRADING212_API_SECRET" Default=""
+          Description="T212 API Secret. Generated alongside the API Key in T212 Settings → API."
+          Type="Variable" Display="always" Required="false" Mask="true"/>
+
   <!-- ── Auth ───────────────────────────────────────────────────────────────── -->
   <Config Name="Dashboard Username" Target="DASHBOARD_USER" Default="admin"
           Description="Username for Basic Auth login when accessing the dashboard."
