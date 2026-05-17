@@ -195,17 +195,17 @@ def _setup_scheduler(app: Flask, analyzer: StockAnalyzer,
     )
     logger.info("Scheduled analysis at %02d:00 on days %s", hour, day_of_week)
 
-    # Weekly backup — Sunday 02:00 UTC
+    # Nightly backup at 02:00 UTC
     if backup.is_configured():
         scheduler.add_job(
             func=_backup_job,
             args=[app, backup],
-            trigger=CronTrigger(day_of_week=6, hour=2, minute=0),
+            trigger=CronTrigger(hour=2, minute=0),
             id="backup",
-            name="Weekly backup",
+            name="Nightly backup",
             replace_existing=True,
         )
-        logger.info("Weekly backup scheduled at Sun 02:00 UTC → %s", backup.backup_path)
+        logger.info("Nightly backup scheduled at 02:00 UTC → %s", backup.backup_path)
     else:
         logger.info("BACKUP_PATH not set — automatic backups disabled")
 
