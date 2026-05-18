@@ -92,6 +92,14 @@ def get_status():
     return jsonify(analyzer.status)
 
 
+@bp.get("/api/obsidian/status")
+def obsidian_status():
+    """Check Obsidian mount, env vars, write access, and recent report files."""
+    from ..reports import ReportGenerator
+
+    return jsonify(ReportGenerator().obsidian_status())
+
+
 @bp.get("/api/dashboard")
 def dashboard_data():
     db          = current_app.extensions["db"]

@@ -23,6 +23,13 @@ from openpyxl.utils import get_column_letter
 
 logger = logging.getLogger(__name__)
 
+# Built-in defaults when /obsidian is mounted (override via env only if needed)
+_DEFAULT_OBSIDIAN_VAULT = "/obsidian"
+_DEFAULT_REPORTS_SUBDIR = (
+    "10_Personal/13_Finances/Investments/AI Investment Analysis"
+)
+_DEFAULT_KNOWLEDGE_SUBDIR = "50_Knowledge/notes"
+
 _COLOURS = {
     "BUY":        "2196F3",
     "SELL":       "F44336",
@@ -64,18 +71,27 @@ class ReportGenerator:
         self._enc_key: Optional[str] = raw_key if raw_key else None
         os.makedirs(self.reports_dir, exist_ok=True)
 
-        vault = (obsidian_vault_dir if obsidian_vault_dir is not None
-                 else os.getenv("OBSIDIAN_VAULT_DIR", "")).strip()
+        vault = obsidian_vault_dir if obsidian_vault_dir is not None else None
+        if vault is None:
+            vault = os.getenv("OBSIDIAN_VAULT_DIR", "").strip()
+        if not vault and os.path.isdir(_DEFAULT_OBSIDIAN_VAULT):
+            vault = _DEFAULT_OBSIDIAN_VAULT
         self.obsidian_vault_dir = vault if vault else None
-        sub = (obsidian_reports_subdir if obsidian_reports_subdir is not None
-               else os.getenv(
-                   "OBSIDIAN_REPORTS_SUBDIR",
-                   "10_Personal/13_Finances/AI Investment Analysis",
-               ))
+        self._obsidian_vault_auto = (
+            not (os.getenv("OBSIDIAN_VAULT_DIR") or "").strip()
+            and self.obsidian_vault_dir == _DEFAULT_OBSIDIAN_VAULT
+        )
+
+        if obsidian_reports_subdir is not None:
+            sub = obsidian_reports_subdir
+        else:
+            sub = os.getenv("OBSIDIAN_REPORTS_SUBDIR", _DEFAULT_REPORTS_SUBDIR)
         self.obsidian_reports_subdir = sub.strip().strip("/\\") if sub else ""
 
-        kn_sub = (obsidian_knowledge_subdir if obsidian_knowledge_subdir is not None
-                  else os.getenv("OBSIDIAN_KNOWLEDGE_SUBDIR", "50_Knowledge/notes"))
+        if obsidian_knowledge_subdir is not None:
+            kn_sub = obsidian_knowledge_subdir
+        else:
+            kn_sub = os.getenv("OBSIDIAN_KNOWLEDGE_SUBDIR", _DEFAULT_KNOWLEDGE_SUBDIR)
         self.obsidian_knowledge_subdir = kn_sub.strip().strip("/\\") if kn_sub else ""
 
         moc_dir = (obsidian_knowledge_moc_dir if obsidian_knowledge_moc_dir is not None
@@ -305,6 +321,84 @@ class ReportGenerator:
     def obsidian_enabled(self) -> bool:
         return bool(self.obsidian_vault_dir and self.obsidian_reports_subdir)
 
+    def obsidian_status(self) -> dict:
+        """Diagnostics for vault mount, env config, and recent .md reports."""
+        vault = self.obsidian_vault_dir or ""
+        base = self.obsidian_reports_subdir or ""
+        full_dir = (
+            os.path.join(vault, base, self.obsidian_full_subdir)
+            if vault and base else ""
+        )
+        single_dir = (
+            os.path.join(vault, base, self.obsidian_single_subdir)
+            if vault and base else ""
+        )
+
+        reasons: list[str] = []
+        if not vault:
+            reasons.append("OBSIDIAN_VAULT_DIR is not set (set to /obsidian)")
+        elif not os.path.isdir(vault):
+            reasons.append(f"Vault path does not exist in container: {vault}")
+        if not base:
+            reasons.append("OBSIDIAN_REPORTS_SUBDIR is not set")
+
+        mount_ok = bool(vault and os.path.isdir(vault))
+        writable = False
+        write_error: Optional[str] = None
+        if mount_ok:
+            probe = os.path.join(vault, ".stock-analyser-write-test")
+            try:
+                with open(probe, "w", encoding="utf-8") as f:
+                    f.write("ok")
+                os.remove(probe)
+                writable = True
+            except OSError as exc:
+                write_error = str(exc)
+                reasons.append(f"Vault not writable: {exc}")
+
+        def _list_md(folder: str, limit: int = 8) -> list[str]:
+            if not folder or not os.path.isdir(folder):
+                return []
+            try:
+                names = [
+                    n for n in os.listdir(folder)
+                    if n.endswith(".md") and os.path.isfile(os.path.join(folder, n))
+                ]
+                names.sort(reverse=True)
+                return names[:limit]
+            except OSError:
+                return []
+
+        return {
+            "enabled": self.obsidian_enabled(),
+            "vault_auto_detected": getattr(self, "_obsidian_vault_auto", False),
+            "vault_dir": vault or None,
+            "reports_base": base or None,
+            "full_portfolio_dir": full_dir or None,
+            "individual_stock_dir": single_dir or None,
+            "mount_exists": mount_ok,
+            "vault_writable": writable,
+            "write_error": write_error,
+            "knowledge_enabled": self.obsidian_knowledge_active(),
+            "default_moc": self.obsidian_default_moc or None,
+            "recent_full": _list_md(full_dir),
+            "recent_single": _list_md(single_dir),
+            "issues": reasons,
+            "ready": self.obsidian_enabled() and mount_ok and writable,
+        }
+
+    def obsidian_skip_reason(self) -> Optional[str]:
+        if not self.obsidian_vault_dir:
+            return (
+                f"No vault at {_DEFAULT_OBSIDIAN_VAULT} — add Obsidian path mapping "
+                "in Docker (host vault → container /obsidian)"
+            )
+        if not os.path.isdir(self.obsidian_vault_dir):
+            return f"Vault path missing in container: {self.obsidian_vault_dir}"
+        if not self.obsidian_reports_subdir:
+            return "OBSIDIAN_REPORTS_SUBDIR is empty"
+        return None
+
     def generate_markdown(
         self, run_id: int, analyses: list[dict], *, run_scope: str = "full",
     ) -> Optional[str]:
@@ -312,7 +406,9 @@ class ReportGenerator:
         Write an Obsidian-friendly .md report into the vault (not rotated/deleted).
         Requires OBSIDIAN_VAULT_DIR + OBSIDIAN_REPORTS_SUBDIR (or constructor args).
         """
-        if not self.obsidian_enabled():
+        skip = self.obsidian_skip_reason()
+        if skip:
+            logger.warning("Obsidian markdown skipped: %s", skip)
             return None
 
         dest_dir = self._obsidian_reports_dir(run_scope)

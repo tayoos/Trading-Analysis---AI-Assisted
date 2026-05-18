@@ -395,6 +395,9 @@ def _generate_run_reports(
         parts = [xlsx, txt]
         if md:
             parts.append(md)
+        else:
+            reason = gen.obsidian_skip_reason() or "Obsidian export disabled"
+            log_fn(f"[{_ts()}] Obsidian: skipped — {reason}")
         log_fn(f"[{_ts()}] Reports: {' | '.join(parts)}")
     except Exception as exc:
         logger.exception("Report generation failed for run %s: %s", run_id, exc)
@@ -442,6 +445,9 @@ def _generate_obsidian_report(
         path = gen.generate_markdown(run_id, analyses, run_scope=run_scope)
         if path:
             log_fn(f"[{_ts()}] Obsidian report: {path}")
+        else:
+            reason = gen.obsidian_skip_reason() or "Obsidian export disabled"
+            log_fn(f"[{_ts()}] Obsidian: skipped — {reason}")
     except Exception as exc:
         logger.exception("Obsidian report failed for run %s: %s", run_id, exc)
         log_fn(f"[{_ts()}] Obsidian report failed: {exc}")
