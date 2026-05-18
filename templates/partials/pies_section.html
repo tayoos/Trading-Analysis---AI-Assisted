@@ -26,6 +26,8 @@
       {% if pie.analysis and pie.analysis.recommendation %}
       <span class="badge badge-{{ pie_rec }} pie-t212-badge">{{ pie_rec | replace('_', ' ') }}</span>
       {% endif %}
+      <button type="button" class="pie-analyse-btn" title="Analyse this pie only"
+        onclick="event.stopPropagation(); triggerSingleRun('{{ pie.analysis_ticker }}')">↻ Analyse</button>
       <span class="pie-t212-chevron" aria-hidden="true">›</span>
     </summary>
     <div class="pie-t212-body">

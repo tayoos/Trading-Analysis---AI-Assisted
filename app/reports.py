@@ -1,5 +1,5 @@
 """
-Report generation: Excel (.xlsx) and plain-text formats.
+Report generation: Excel (.xlsx), plain-text, and optional Obsidian markdown.
 
 Encryption: set REPORTS_ENCRYPTION_KEY in your .env to enable.
   - Excel files are password-protected with that key.
@@ -12,6 +12,7 @@ import hashlib
 import io
 import logging
 import os
+import re
 from base64 import urlsafe_b64encode
 from datetime import datetime, timezone, timedelta
 from typing import Optional
@@ -50,12 +51,60 @@ def _derive_fernet_key(password: str) -> bytes:
 class ReportGenerator:
     def __init__(self, reports_dir: Optional[str] = None,
                  encryption_key: Optional[str] = None,
-                 retention_days: int = 365):
+                 retention_days: int = 365,
+                 obsidian_vault_dir: Optional[str] = None,
+                 obsidian_reports_subdir: Optional[str] = None,
+                 obsidian_knowledge_subdir: Optional[str] = None,
+                 obsidian_knowledge_moc_dir: Optional[str] = None,
+                 obsidian_knowledge_enabled: Optional[bool] = None,
+                 obsidian_default_moc: Optional[str] = None):
         self.reports_dir = reports_dir or os.getenv("REPORTS_DIR", "/data/reports")
         self.retention_days = int(os.getenv("REPORTS_RETENTION_DAYS", str(retention_days)))
         raw_key = encryption_key or os.getenv("REPORTS_ENCRYPTION_KEY", "")
         self._enc_key: Optional[str] = raw_key if raw_key else None
         os.makedirs(self.reports_dir, exist_ok=True)
+
+        vault = (obsidian_vault_dir if obsidian_vault_dir is not None
+                 else os.getenv("OBSIDIAN_VAULT_DIR", "")).strip()
+        self.obsidian_vault_dir = vault if vault else None
+        sub = (obsidian_reports_subdir if obsidian_reports_subdir is not None
+               else os.getenv(
+                   "OBSIDIAN_REPORTS_SUBDIR",
+                   "10_Personal/13_Finances/AI Investment Analysis",
+               ))
+        self.obsidian_reports_subdir = sub.strip().strip("/\\") if sub else ""
+
+        kn_sub = (obsidian_knowledge_subdir if obsidian_knowledge_subdir is not None
+                  else os.getenv("OBSIDIAN_KNOWLEDGE_SUBDIR", "50_Knowledge/notes"))
+        self.obsidian_knowledge_subdir = kn_sub.strip().strip("/\\") if kn_sub else ""
+
+        moc_dir = (obsidian_knowledge_moc_dir if obsidian_knowledge_moc_dir is not None
+                   else os.getenv("OBSIDIAN_KNOWLEDGE_MOC_DIR", "50_Knowledge/_moc"))
+        self.obsidian_knowledge_moc_dir = moc_dir.strip().strip("/\\") if moc_dir else ""
+
+        if obsidian_knowledge_enabled is not None:
+            self.obsidian_knowledge_enabled = obsidian_knowledge_enabled
+        else:
+            raw = os.getenv("OBSIDIAN_KNOWLEDGE_ENABLED", "true").strip().lower()
+            self.obsidian_knowledge_enabled = raw not in ("0", "false", "no", "off")
+
+        default_moc = (obsidian_default_moc if obsidian_default_moc is not None
+                       else os.getenv("OBSIDIAN_DEFAULT_MOC", "MOC-investment-analysis"))
+        self.obsidian_default_moc = (default_moc or "").strip()
+
+    def obsidian_moc_active(self) -> bool:
+        return bool(
+            self.obsidian_vault_dir
+            and self.obsidian_knowledge_moc_dir
+            and self.obsidian_default_moc
+        )
+
+    def obsidian_knowledge_active(self) -> bool:
+        return (
+            self.obsidian_knowledge_enabled
+            and self.obsidian_vault_dir
+            and self.obsidian_knowledge_subdir
+        )
 
     # ── Excel ──────────────────────────────────────────────────────────────────
 
@@ -200,6 +249,278 @@ class ReportGenerator:
         logger.info("Text report saved to %s", path)
         return path
 
+    # ── Obsidian markdown (knowledge base) ─────────────────────────────────────
+
+    def obsidian_enabled(self) -> bool:
+        return bool(self.obsidian_vault_dir and self.obsidian_reports_subdir)
+
+    def generate_markdown(self, run_id: int, analyses: list[dict]) -> Optional[str]:
+        """
+        Write an Obsidian-friendly .md report into the vault (not rotated/deleted).
+        Requires OBSIDIAN_VAULT_DIR + OBSIDIAN_REPORTS_SUBDIR (or constructor args).
+        """
+        if not self.obsidian_enabled():
+            return None
+
+        dest_dir = os.path.join(self.obsidian_vault_dir, self.obsidian_reports_subdir)
+        os.makedirs(dest_dir, exist_ok=True)
+
+        stamp = _date_stamp()
+        day = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        filename = f"{day} Analysis Run {run_id}.md"
+        path = os.path.join(dest_dir, filename)
+
+        tickers = sorted({a.get("ticker", "") for a in analyses if a.get("ticker")})
+        generated = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+        lines = [
+            "---",
+            f"run_id: {run_id}",
+            f"generated: {generated}",
+            "tags:",
+            "  - investment-analysis",
+            "  - stock-analyzer",
+            "tickers:",
+            *[f"  - {t}" for t in tickers],
+        ]
+        if self.obsidian_default_moc:
+            lines.append(f"moc: '[[{self.obsidian_default_moc}]]'")
+        lines += [
+            "---",
+            "",
+            f"# Stock analysis — run {run_id}",
+            "",
+            f"Generated {generated} (UTC).",
+            "",
+        ]
+
+        for a in analyses:
+            ticker = a.get("ticker", "?")
+            rec = a.get("recommendation", "?")
+            conf = a.get("confidence", "?")
+            price = a.get("current_price") or 0
+            cost = a.get("cost_basis") or 0
+            shares = a.get("shares") or 0
+            pnl_pct = ((price - cost) / cost * 100) if cost else 0
+
+            lines += [
+                f"## {ticker}",
+                "",
+                f"**{rec}** · {conf} confidence",
+                "",
+                "| | |",
+                "|---|---|",
+                f"| Price | {price:.4f} |" if price else "| Price | — |",
+                f"| Cost | {cost:.4f} |" if cost else "| Cost | — |",
+                f"| Shares | {shares:g} |" if shares else "| Shares | — |",
+                f"| P&L | {pnl_pct:+.1f}% |" if cost else "| P&L | — |",
+                f"| 30d target | {a.get('price_target_30d', '—')} |",
+                "",
+            ]
+            if a.get("pe_ratio") or a.get("analyst_target_mean"):
+                lines.append(
+                    f"P/E {a.get('pe_ratio', '—')} · EPS growth {a.get('eps_growth_pct', '—')}% · "
+                    f"Analyst target {a.get('analyst_target_mean', '—')} "
+                    f"({(a.get('analyst_consensus') or '').upper()})"
+                )
+                lines.append("")
+            if a.get("reasoning"):
+                lines += ["### Thesis", "", str(a["reasoning"]), ""]
+            if a.get("news_summary") or a.get("news_sentiment"):
+                lines += [
+                    "### News",
+                    "",
+                    f"**{a.get('news_sentiment', '?')}** — {a.get('news_summary', '')}",
+                    "",
+                ]
+            cats = a.get("catalysts") or []
+            if cats:
+                lines += ["### Catalysts", ""]
+                lines += [f"- {c}" for c in cats]
+                lines.append("")
+            risks = a.get("risks") or []
+            if risks:
+                lines += ["### Risks", ""]
+                lines += [f"- {r}" for r in risks]
+                lines.append("")
+            worries = a.get("worries") or []
+            if worries:
+                lines += ["### Worries", ""]
+                lines += [f"- {w}" for w in worries]
+                lines.append("")
+            if a.get("outlook_90d"):
+                lines += ["### 90-day outlook", "", str(a["outlook_90d"]), ""]
+            lines.append("---")
+            lines.append("")
+
+        with open(path, "w", encoding="utf-8") as f:
+            f.write("\n".join(lines).rstrip() + "\n")
+
+        if self.obsidian_moc_active():
+            report_wikilink = filename.removesuffix(".md")
+            self._link_in_moc(
+                self.obsidian_default_moc,
+                report_wikilink,
+                section="Analysis runs",
+            )
+
+        logger.info("Obsidian report saved to %s", path)
+        return path
+
+    def write_knowledge_notes(
+        self,
+        run_id: int,
+        ticker: str,
+        notes: list[dict],
+        *,
+        market_ticker: Optional[str] = None,
+        run_report_day: Optional[str] = None,
+    ) -> list[str]:
+        """
+        Write atomic notes to 50_Knowledge/notes when Claude returns knowledge_notes.
+        Updates linked MOC files under 50_Knowledge/_moc when requested.
+        """
+        if not self.obsidian_knowledge_active() or not notes:
+            return []
+
+        notes_dir = os.path.join(self.obsidian_vault_dir, self.obsidian_knowledge_subdir)
+        os.makedirs(notes_dir, exist_ok=True)
+
+        day = run_report_day or datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        run_link = f"[[{day} Analysis Run {run_id}]]"
+        written: list[str] = []
+
+        for item in notes:
+            if not isinstance(item, dict):
+                continue
+            slug = _sanitize_knowledge_slug(item.get("slug") or "")
+            body = (item.get("body") or item.get("summary") or "").strip()
+            if not slug or not body:
+                continue
+
+            mocs = self._mocs_for_note(item)
+
+            existing = _find_note_by_slug(notes_dir, slug)
+            if existing:
+                filename = existing
+                note_id = filename.removesuffix(".md")
+            else:
+                note_id = f"{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}-{slug}"
+                filename = f"{note_id}.md"
+
+            path = os.path.join(notes_dir, filename)
+            generated = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+            title = (item.get("title") or slug.replace("-", " ")).strip()
+
+            lines = [
+                "---",
+                "source: stock-analyzer",
+                f"run_id: {run_id}",
+                f"ticker: {ticker}",
+            ]
+            if market_ticker and market_ticker.upper() != ticker.upper():
+                lines.append(f"market_ticker: {market_ticker}")
+            lines += [
+                f"created: {generated}",
+                "tags:",
+                "  - investment-knowledge",
+                "  - stock-analyzer",
+            ]
+            if mocs:
+                lines.append("mocs:")
+                lines += [f"  - {m}" for m in mocs]
+            lines += [
+                "---",
+                "",
+                f"# {title}",
+                "",
+                body,
+                "",
+                "## Links",
+                "",
+                f"- Portfolio run: {run_link}",
+                f"- Position: {ticker}",
+            ]
+            if mocs:
+                lines.append("- MOCs: " + ", ".join(f"[[{m}]]" for m in mocs))
+
+            with open(path, "w", encoding="utf-8") as f:
+                f.write("\n".join(lines).rstrip() + "\n")
+
+            written.append(path)
+            logger.info("Knowledge note %s → %s", "updated" if existing else "created", path)
+
+            for moc_name in mocs:
+                self._link_in_moc(moc_name, note_id, section="Knowledge notes")
+
+        return written
+
+    def _mocs_for_note(self, item: dict) -> list[str]:
+        """Always include default MOC; merge Claude-suggested topic MOCs."""
+        extra = item.get("mocs") or item.get("link_mocs") or []
+        if isinstance(extra, str):
+            extra = [extra]
+        names: list[str] = []
+        seen: set[str] = set()
+
+        def add(name: str) -> None:
+            name = (name or "").strip()
+            if not name or name in seen:
+                return
+            seen.add(name)
+            names.append(name)
+
+        if self.obsidian_default_moc:
+            add(self.obsidian_default_moc)
+        for m in extra:
+            add(str(m))
+        return names
+
+    def _ensure_moc_file(self, moc_name: str) -> str:
+        """Create MOC file if missing; return path."""
+        moc_file = moc_name if moc_name.endswith(".md") else f"{moc_name}.md"
+        moc_path = os.path.join(
+            self.obsidian_vault_dir, self.obsidian_knowledge_moc_dir, moc_file,
+        )
+        if os.path.isfile(moc_path):
+            return moc_path
+
+        os.makedirs(os.path.dirname(moc_path), exist_ok=True)
+        title = moc_name.replace("MOC-", "", 1).replace("-", " ").strip().title()
+        is_default = moc_name == self.obsidian_default_moc
+        body = _new_moc_template(moc_name, title, is_default=is_default)
+        with open(moc_path, "w", encoding="utf-8") as f:
+            f.write(body)
+        logger.info("Created MOC: %s", moc_path)
+        return moc_path
+
+    def _link_in_moc(self, moc_name: str, wikilink: str, *, section: str) -> None:
+        if not self.obsidian_moc_active():
+            return
+        moc_path = self._ensure_moc_file(moc_name)
+        link_line = f"- [[{wikilink}]]"
+        heading = f"## {section}"
+        try:
+            with open(moc_path, "r", encoding="utf-8") as f:
+                content = f.read()
+            if f"[[{wikilink}]]" in content:
+                return
+            if heading in content:
+                parts = content.split(heading, 1)
+                rest = parts[1]
+                if "\n## " in rest:
+                    head, tail = rest.split("\n## ", 1)
+                    rest = head.rstrip() + "\n" + link_line + "\n\n## " + tail
+                else:
+                    rest = rest.rstrip() + "\n" + link_line + "\n"
+                content = parts[0] + heading + rest
+            else:
+                content = content.rstrip() + f"\n\n{heading}\n\n{link_line}\n"
+            with open(moc_path, "w", encoding="utf-8") as f:
+                f.write(content)
+        except OSError as exc:
+            logger.warning("Could not update MOC %s: %s", moc_path, exc)
+
     def decrypt_text_report(self, path: str) -> str:
         """Decrypt a .txt.enc file and return its contents as a string."""
         if not self._enc_key:
@@ -254,6 +575,50 @@ class ReportGenerator:
 
 def _date_stamp() -> str:
     return datetime.now(timezone.utc).strftime("%Y%m%d_%H%M")
+
+
+def _sanitize_knowledge_slug(raw: str) -> str:
+    slug = raw.lower().strip()
+    slug = re.sub(r"[^a-z0-9]+", "-", slug)
+    slug = slug.strip("-")
+    return slug[:60] if slug else ""
+
+
+def _new_moc_template(moc_name: str, title: str, *, is_default: bool) -> str:
+    intro = (
+        "Map of content for portfolio analysis runs and durable notes from the stock analyser."
+        if is_default
+        else f"Map of content for {title} (linked from stock analyser)."
+    )
+    related = ""
+    if is_default:
+        related = "\n## Related\n\n- [[MOC-uk-reits]]\n"
+    return f"""---
+tags:
+  - moc
+  - stock-analyzer
+---
+
+# {moc_name}
+
+{intro}
+
+## Analysis runs
+
+## Knowledge notes
+{related}"""
+
+
+def _find_note_by_slug(notes_dir: str, slug: str) -> Optional[str]:
+    """Return filename if a note ending with -{slug}.md already exists."""
+    suffix = f"-{slug}.md"
+    try:
+        for fname in os.listdir(notes_dir):
+            if fname.endswith(suffix):
+                return fname
+    except OSError:
+        pass
+    return None
 
 
 def _write_header_row(ws, headers: list[str]) -> None:

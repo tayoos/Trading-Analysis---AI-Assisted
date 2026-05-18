@@ -36,6 +36,12 @@ services:
       - DASHBOARD_PASSWORD=${DASHBOARD_PASSWORD}
       - TRUSTED_NETWORKS=${TRUSTED_NETWORKS:-127.0.0.1/32,::1/128}
       - BACKUP_RETAIN_DAYS=${BACKUP_RETAIN_DAYS:-60}
+      - OBSIDIAN_VAULT_DIR=${OBSIDIAN_VAULT_DIR:-/obsidian}
+      - OBSIDIAN_REPORTS_SUBDIR=${OBSIDIAN_REPORTS_SUBDIR:-10_Personal/13_Finances/AI Investment Analysis}
+      - OBSIDIAN_KNOWLEDGE_ENABLED=${OBSIDIAN_KNOWLEDGE_ENABLED:-true}
+      - OBSIDIAN_KNOWLEDGE_SUBDIR=${OBSIDIAN_KNOWLEDGE_SUBDIR:-50_Knowledge/notes}
+      - OBSIDIAN_KNOWLEDGE_MOC_DIR=${OBSIDIAN_KNOWLEDGE_MOC_DIR:-50_Knowledge/_moc}
+      - OBSIDIAN_DEFAULT_MOC=${OBSIDIAN_DEFAULT_MOC:-MOC-investment-analysis}
     volumes:
       # ── Primary data on fast local storage (NVMe bind-mount into LXC) ────────
       - ${PRIMARY_DATA_PATH:-/opt/stock-analyzer}/db:/data/db
@@ -48,6 +54,8 @@ services:
       # After first container start, run:  docker exec -it stock-analyzer claude login
       # Credentials are written here and survive container restarts/updates.
       - ${PRIMARY_DATA_PATH:-/opt/stock-analyzer}/claude-auth:/home/appuser/.claude
+      # ── Obsidian vault (optional — bind-mount your vault in the LXC first) ───
+      - ${OBSIDIAN_VAULT_HOST_PATH:-/mnt/obsidian/MyVault}:/obsidian
     restart: unless-stopped
     deploy:
       resources:
