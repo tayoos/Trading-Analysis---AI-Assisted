@@ -436,7 +436,7 @@ def _sync_job(app: Flask, t212: T212DataSource, portfolio: PortfolioManager) -> 
             from .routes.sync import _reconcile_positions
             from .capital import sync_capital_from_t212, sync_pies_from_t212
             sync_capital_from_t212(t212, db, holdings_cost=0.0)
-            _reconcile_positions(t212, db)
+            _reconcile_positions(t212, db, portfolio)
             holdings_cost = sum(p["shares"] * p["avg_cost"] for p in db.get_positions())
             sync_capital_from_t212(t212, db, holdings_cost)
             sync_pies_from_t212(t212, db)

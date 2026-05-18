@@ -8,6 +8,7 @@ from typing import Optional
 import pandas as pd
 
 from .database import Database
+from .position_lifecycle import is_open_position
 from .sources.base import Position, Trade
 
 logger = logging.getLogger(__name__)
@@ -82,7 +83,7 @@ class PortfolioManager:
                         total_cost -= avg * min(t["quantity"], shares)
                         shares = max(0.0, shares - t["quantity"])
 
-            if shares > 0.001:
+            if is_open_position(shares):
                 avg_cost = total_cost / shares if shares else 0
                 self.db.upsert_position(
                     ticker=ticker,
@@ -93,8 +94,38 @@ class PortfolioManager:
                 )
             else:
                 self.db.delete_position(ticker)
-                # Position fully closed — move to owned_history if not already there
                 self._record_closed_position(ticker, trades)
+
+    def archive_closed_position(self, ticker: str) -> bool:
+        """Move a fully closed ticker into owned_history (idempotent)."""
+        if self.db.get_owned_history(ticker):
+            return False
+        trades = self.db.get_trades(ticker=ticker, limit=100_000)
+        if not trades:
+            return False
+        trades.sort(key=lambda x: x["traded_at"])
+        self._record_closed_position(ticker, trades)
+        return True
+
+    def archive_pruned_positions(self, tickers: list[str]) -> list[str]:
+        """Archive tickers removed from the live book (e.g. after T212 reconcile)."""
+        archived = []
+        for ticker in tickers:
+            if self.archive_closed_position(ticker):
+                archived.append(ticker)
+        return archived
+
+    def purge_dust_positions(self) -> list[str]:
+        """Drop sub-threshold positions and archive when trade history exists."""
+        removed = []
+        for pos in self.db.get_positions():
+            if is_open_position(pos.get("shares")):
+                continue
+            ticker = pos["ticker"]
+            self.db.delete_position(ticker)
+            removed.append(ticker)
+        self.archive_pruned_positions(removed)
+        return removed
 
     def _record_closed_position(self, ticker: str, trades: list[dict]) -> None:
         existing = self.db.get_owned_history(ticker)

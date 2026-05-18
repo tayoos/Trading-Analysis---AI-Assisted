@@ -9,7 +9,12 @@ bp = Blueprint("dashboard", __name__)
 @bp.get("/")
 def index():
     db          = current_app.extensions["db"]
+    portfolio   = current_app.extensions["portfolio"]
     price_cache = current_app.extensions["price_cache"]
+
+    purged = portfolio.purge_dust_positions()
+    if purged:
+        current_app.logger.info("Purged dust position(s): %s", ", ".join(sorted(purged)))
 
     positions = db.get_positions()
     tickers = [p["ticker"] for p in positions]

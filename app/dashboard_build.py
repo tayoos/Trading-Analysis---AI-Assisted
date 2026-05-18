@@ -6,6 +6,7 @@ from __future__ import annotations
 from collections import defaultdict
 
 from .capital import format_pie_icon
+from .position_lifecycle import is_open_position
 from .currency import (
     enrich_position_currencies,
     listing_currency_for,
@@ -176,7 +177,10 @@ def build_dashboard_view(
     price_cache,
 ) -> dict:
     analyses = db.get_latest_analyses()
-    positions = db.get_positions()
+    positions = [
+        p for p in db.get_positions()
+        if is_open_position(p.get("shares"))
+    ]
     account_currency = db.get_account_currency()
     handoff_notes = db.get_all_handoff_notes()
     pies = db.get_pies()
@@ -211,31 +215,20 @@ def build_dashboard_view(
             )
 
     cards_by_ticker: dict[str, dict] = {}
-    analysed = set()
-
-    for a in analyses:
-        if is_pie_ticker(a["ticker"]):
-            continue
-        ticker = a["ticker"]
+    for p in positions:
+        ticker = p["ticker"]
         card = build_card(
-            a, pos_map.get(ticker), live_prices, handoff_notes, company_names, price_errors,
+            analysis_map.get(ticker),
+            p,
+            live_prices,
+            handoff_notes,
+            company_names,
+            price_errors,
             account_currency=account_currency,
             quote_currencies=quote_currencies,
         )
         enrich_position_currencies(card, account_currency)
         cards_by_ticker[ticker] = card
-        analysed.add(ticker)
-
-    for p in positions:
-        ticker = p["ticker"]
-        if ticker not in analysed:
-            card = build_card(
-                None, p, live_prices, handoff_notes, company_names, price_errors,
-                account_currency=account_currency,
-                quote_currencies=quote_currencies,
-            )
-            enrich_position_currencies(card, account_currency)
-            cards_by_ticker[ticker] = card
 
     pie_qty_by_ticker: dict[str, float] = defaultdict(float)
     for pie in pies:

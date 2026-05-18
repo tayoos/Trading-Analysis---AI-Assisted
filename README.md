@@ -25,6 +25,8 @@ docker exec -it stock-analyzer claude login
 
 Open **http://localhost:8765** and click **Run Analysis Now**.
 
+**Full user guide:** [`docs/Stock-Analyser-User-Guide.md`](docs/Stock-Analyser-User-Guide.md) — deployment, Obsidian paths, pies vs Stocks, sold-position archiving, MOC/knowledge notes, troubleshooting.
+
 ---
 
 ## Unraid setup
@@ -172,8 +174,10 @@ Push to `main` → GitHub Actions builds and pushes `ghcr.io/tayoos/trading-anal
 
 | Source | Setup | Priority |
 |--------|-------|----------|
-| Trading 212 API | Set `TRADING212_API_KEY` | Primary — auto-syncs trades and dividends |
+| Trading 212 API | Set `TRADING212_API_KEY` | Primary — auto-syncs trades, pies, dividends; reconciles open positions |
 | Excel fallback | `stocks.xlsx` in `/data/stocks/` with Ticker / Shares / Buy Price columns | Used when no DB positions exist |
+
+**Sold holdings:** After a full sell, run **Sync T212**. The dashboard drops closed tickers; archived rows appear under **History → Trades → Closed Positions**. See the user guide for pies layout and dust handling.
 
 ---
 
@@ -242,7 +246,9 @@ app/
 ├── analyzer.py          Claude analysis engine + handoff notes
 ├── backup.py            SQLite hot-backup + report copy + rotation
 ├── database.py          SQLite layer (WAL, all tables)
-├── portfolio.py         AVCO cost basis + Excel reader
+├── portfolio.py         AVCO cost basis, closed-position archive, Excel reader
+├── position_lifecycle.py  Open vs dust thresholds (shared with sync/dashboard)
+├── dashboard_build.py   Dashboard cards, pie groups, capital summary
 ├── ratelimit.py         Sliding-window in-memory rate limiting
 ├── reports.py           Excel + text report generation (optional encryption)
 ├── sources/
