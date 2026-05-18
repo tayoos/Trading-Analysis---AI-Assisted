@@ -36,17 +36,19 @@ It does **not** place trades.
 ├── full/                               ← Run Analysis (Excel + text)
 └── single/                             ← reserved (↻ does not write Excel/text)
 
-10_Personal/13_Finances/AI Investment Analysis/   (Obsidian)
+10_Personal/13_Finances/Investments/AI Investment Analysis/   (Obsidian)
 ├── Full Portfolio/                     ← Run Analysis (.md)
 │   └── 2026-05-18 Analysis Run 42.md
 └── Individual Stock/                   ← ↻ per-card (.md)
     └── 2026-05-18 SOAC Analysis Run 43.md
 
-50_Knowledge/
-├── notes/                              ← atomic notes (sometimes)
+50_Knowledge/                           ← shared knowledge base (other agents too)
+├── notes/                              ← atomic insight notes (sometimes)
 └── _moc/
-    └── MOC-investment-analysis.md      ← index (auto-created)
+    └── MOC-investment-analysis.md      ← index (auto-created/linked)
 ```
+
+**Unraid:** you only need the **Obsidian vault path** mapped to `/obsidian`. Env vars are **optional overrides** — the app sets defaults automatically when `/obsidian` exists (newer images).
 
 ---
 
@@ -61,7 +63,7 @@ It does **not** place trades.
 
 Reports are written **when the run finishes successfully**, not per ticker mid-run.
 
-**Knowledge notes** (`50_Knowledge/notes/`) are written **during** the run, only when Claude returns non-empty `knowledge_notes` (uncommon).
+**Knowledge notes** (`50_Knowledge/notes/`) are written **during** the run, only when Claude returns non-empty `knowledge_notes` (uncommon). Same area as your other agents’ zettelkasten notes.
 
 Only **one** analysis (full or single) can run at a time.
 
@@ -112,12 +114,12 @@ Mount the **vault root**, not `AI Investment Analysis` or `50_Knowledge` alone.
 
 | Path | When | Contents |
 |------|------|----------|
-| `…/AI Investment Analysis/Full Portfolio/` | Every successful **Run Analysis** | `YYYY-MM-DD Analysis Run {id}.md` |
-| `…/AI Investment Analysis/Individual Stock/` | Every successful **↻** run | `YYYY-MM-DD {TICKER} Analysis Run {id}.md` |
-| `50_Knowledge/notes/` | Sometimes | `YYYYMMDDHHMMSS-{slug}.md` |
-| `50_Knowledge/_moc/` | Create/link on reports & knowledge | `MOC-investment-analysis.md`, topic MOCs |
+| `…/Investments/AI Investment Analysis/Full Portfolio/` | **Run Analysis** | `YYYY-MM-DD Analysis Run {id}.md` |
+| `…/Investments/AI Investment Analysis/Individual Stock/` | **↻** run | `YYYY-MM-DD {TICKER} Analysis Run {id}.md` |
+| `50_Knowledge/notes/` | Sometimes | Atomic notes when Claude flags insight |
+| `50_Knowledge/_moc/` | Reports & knowledge | `MOC-investment-analysis.md`, topic MOCs |
 | `50_Knowledge/compiled/` | Never (this app) | Other agents |
-| Rest of vault | Never (this app) | Other Claude agents, your notes |
+| Rest of vault | Never (this app) | Your other notes |
 
 ---
 
@@ -140,7 +142,7 @@ Hint on dashboard: *↻ on a card analyses that position only.*
 3. **T212 price** — used for position valuation when available.
 4. **Handoff memory** — prior thesis; stale “worthless / $0” notes skipped if T212 shows a live price.
 5. **Claude** — recommendation, reasoning, catalysts, risks, `handoff_note`, optional `knowledge_notes`.
-6. **Knowledge notes** — if any, written to `50_Knowledge/notes/` and linked in MOCs.
+6. **Knowledge notes** — if any, written to `50_Knowledge/notes/` and linked in `50_Knowledge/_moc/`.
 7. **SQLite** — analysis row + handoff for next run.
 
 ---
@@ -202,22 +204,24 @@ Stale “SOAC worthless $0” on a card → **Sync T212**, then **↻** on that 
 
 `TRADING212_API_KEY`, `TRADING212_API_SECRET`, `DASHBOARD_USER`, `DASHBOARD_PASSWORD`, `TZ`
 
-### Obsidian environment
+### Obsidian — path only (defaults automatic)
 
-| Variable | Default |
-|----------|---------|
-| `OBSIDIAN_VAULT_DIR` | `/obsidian` |
-| `OBSIDIAN_REPORTS_SUBDIR` | `10_Personal/13_Finances/AI Investment Analysis` |
+1. Add **one** path: host vault → container `/obsidian`
+2. **Apply** / restart — no env vars required on newer builds
+
+Optional overrides (only if your layout differs):
+
+| Variable | Built-in default |
+|----------|------------------|
+| `OBSIDIAN_VAULT_DIR` | `/obsidian` (when mount exists) |
+| `OBSIDIAN_REPORTS_SUBDIR` | `10_Personal/13_Finances/Investments/AI Investment Analysis` |
 | `OBSIDIAN_REPORTS_FULL_SUBDIR` | `Full Portfolio` |
 | `OBSIDIAN_REPORTS_SINGLE_SUBDIR` | `Individual Stock` |
-| `REPORTS_FULL_SUBDIR` | `full` |
-| `REPORTS_SINGLE_SUBDIR` | `single` |
-| `OBSIDIAN_KNOWLEDGE_ENABLED` | `true` |
 | `OBSIDIAN_KNOWLEDGE_SUBDIR` | `50_Knowledge/notes` |
 | `OBSIDIAN_KNOWLEDGE_MOC_DIR` | `50_Knowledge/_moc` |
 | `OBSIDIAN_DEFAULT_MOC` | `MOC-investment-analysis` |
 
-Set `OBSIDIAN_KNOWLEDGE_ENABLED=false` to disable `50_Knowledge/notes` only (run reports still work).
+Set `OBSIDIAN_KNOWLEDGE_ENABLED=false` to disable knowledge notes only.
 
 ### First run
 
@@ -229,8 +233,8 @@ Set `OBSIDIAN_KNOWLEDGE_ENABLED=false` to disable `50_Knowledge/notes` only (run
 ### Verify
 
 ```bash
-docker exec -it StockAnalyzer ls "/obsidian/10_Personal/13_Finances/AI Investment Analysis/Full Portfolio"
-docker exec -it StockAnalyzer ls "/obsidian/10_Personal/13_Finances/AI Investment Analysis/Individual Stock"
+docker exec -it StockAnalyzer ls "/obsidian/10_Personal/13_Finances/Investments/AI Investment Analysis/Full Portfolio"
+docker exec -it StockAnalyzer ls "/obsidian/10_Personal/13_Finances/Investments/AI Investment Analysis/Individual Stock"
 docker exec -it StockAnalyzer ls "/obsidian/50_Knowledge/_moc"
 ```
 
@@ -245,13 +249,13 @@ PRIMARY_DATA_PATH=/opt/stock-analyzer
 BACKUP_HOST_PATH=/mnt/backups/stock-analyzer
 OBSIDIAN_VAULT_HOST_PATH=/mnt/obsidian/MyVault
 OBSIDIAN_VAULT_DIR=/obsidian
-OBSIDIAN_REPORTS_SUBDIR=10_Personal/13_Finances/AI Investment Analysis
+OBSIDIAN_REPORTS_SUBDIR=10_Personal/13_Finances/Investments/AI Investment Analysis
 OBSIDIAN_REPORTS_FULL_SUBDIR=Full Portfolio
 OBSIDIAN_REPORTS_SINGLE_SUBDIR=Individual Stock
+OBSIDIAN_KNOWLEDGE_SUBDIR=50_Knowledge/notes
 REPORTS_FULL_SUBDIR=full
 REPORTS_SINGLE_SUBDIR=single
 OBSIDIAN_KNOWLEDGE_ENABLED=true
-OBSIDIAN_KNOWLEDGE_SUBDIR=50_Knowledge/notes
 OBSIDIAN_KNOWLEDGE_MOC_DIR=50_Knowledge/_moc
 OBSIDIAN_DEFAULT_MOC=MOC-investment-analysis
 ```
@@ -283,9 +287,22 @@ Stored in SQLite (`handoff_notes`), not as separate Obsidian files. Feeds the ne
 
 ## Troubleshooting
 
+### No `.md` files in Obsidian
+
+1. **Obsidian vault path** mapped to `/obsidian` (required).
+2. **Recent image** with auto-defaults (or set env vars on old images).
+3. **Completed** **Run Analysis** or **↻** after restart.
+4. Look under:
+   - `…/Investments/AI Investment Analysis/Full Portfolio/`
+   - `…/Investments/AI Investment Analysis/Individual Stock/`
+5. `docker exec StAnalyser env | grep OBSIDIAN` — should show vars after restart on new image.
+6. `http://YOUR-IP:8765/api/obsidian/status` → `"ready": true`
+7. Logs: `Obsidian report:` not `Obsidian: skipped`
+
 | Symptom | Fix |
 |---------|-----|
-| No Obsidian `.md` | Update image; check `/obsidian` mount + `OBSIDIAN_VAULT_DIR` |
+| No Obsidian `.md` | Vault path + update image + run analysis |
+| Empty `grep OBSIDIAN` on old image | Add path only after update, or add env vars manually |
 | Wrong folder names | Set `OBSIDIAN_REPORTS_FULL_SUBDIR` / `OBSIDIAN_REPORTS_SINGLE_SUBDIR` or rename folders in Obsidian |
 | Old reports in parent folder | Legacy; new runs use **Full Portfolio/** and **Individual Stock/** |
 | Stale SOAC analysis | Sync → **↻** |
@@ -324,8 +341,8 @@ Link from `[[MOC-homelab]]` or `[[MOC-investment-analysis]]`.
 ### Generated links to expect
 
 - `[[MOC-investment-analysis]]`
-- `10_Personal/13_Finances/AI Investment Analysis/Full Portfolio/`
-- `10_Personal/13_Finances/AI Investment Analysis/Individual Stock/`
+- `10_Personal/13_Finances/Investments/AI Investment Analysis/Full Portfolio/`
+- `10_Personal/13_Finances/Investments/AI Investment Analysis/Individual Stock/`
 - `50_Knowledge/notes/` (when created)
 
 ---

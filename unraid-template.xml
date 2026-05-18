@@ -50,8 +50,8 @@
   </Config>
 
   <Config Name="Obsidian vault" Target="/obsidian"
-          Default="/mnt/user/appdata/obsidian/MyVault"
-          Description="Host path to your Obsidian vault ROOT (the folder that contains 10_Personal/, etc.). Markdown analysis reports are written into a subfolder below — leave blank to disable."
+          Default="/mnt/user/appdata/obsidian/Obsidian Vault"
+          Description="REQUIRED for .md reports: host path to vault ROOT (contains 10_Personal/, 50_Knowledge/, etc.) → container /obsidian. App auto-configures paths when this is set; you do not need separate Obsidian env vars unless customizing."
           Type="Path" Display="always" Required="false" Mask="false"/>
 
   <!-- ── T212 API ───────────────────────────────────────────────────────────── -->
@@ -88,38 +88,17 @@
           Description="Reports older than this many days are deleted automatically on each analysis run."
           Type="Variable" Display="advanced" Required="false" Mask="false">365</Config>
 
-  <Config Name="Obsidian reports folder" Target="OBSIDIAN_VAULT_DIR" Default="/obsidian"
-          Description="Container path where the Obsidian vault is mounted. Must match the volume above (/obsidian). Leave OBSIDIAN vault path empty to disable markdown export."
-          Type="Variable" Display="advanced" Required="false" Mask="false">/obsidian</Config>
+  <Config Name="Obsidian override: vault path" Target="OBSIDIAN_VAULT_DIR" Default=""
+          Description="Optional. Leave empty when Obsidian vault path is set above — defaults to /obsidian automatically."
+          Type="Variable" Display="advanced" Required="false" Mask="false"/>
 
-  <Config Name="Obsidian reports subfolder" Target="OBSIDIAN_REPORTS_SUBDIR"
-          Default="10_Personal/13_Finances/AI Investment Analysis"
-          Description="Base folder for .md run reports (relative to vault root)."
-          Type="Variable" Display="advanced" Required="false" Mask="false">10_Personal/13_Finances/AI Investment Analysis</Config>
+  <Config Name="Obsidian override: reports base" Target="OBSIDIAN_REPORTS_SUBDIR" Default=""
+          Description="Optional. Default: 10_Personal/13_Finances/Investments/AI Investment Analysis (with Full Portfolio / Individual Stock subfolders)."
+          Type="Variable" Display="advanced" Required="false" Mask="false"/>
 
-  <Config Name="Obsidian full portfolio subfolder" Target="OBSIDIAN_REPORTS_FULL_SUBDIR" Default="Full Portfolio"
-          Description="Subfolder under reports base for Run Analysis (whole portfolio)."
-          Type="Variable" Display="advanced" Required="false" Mask="false">Full Portfolio</Config>
-
-  <Config Name="Obsidian individual stock subfolder" Target="OBSIDIAN_REPORTS_SINGLE_SUBDIR" Default="Individual Stock"
-          Description="Subfolder under reports base for per-card ↻ analysis."
-          Type="Variable" Display="advanced" Required="false" Mask="false">Individual Stock</Config>
-
-  <Config Name="Obsidian knowledge enabled" Target="OBSIDIAN_KNOWLEDGE_ENABLED" Default="true"
-          Description="When true, Claude may write atomic notes to 50_Knowledge/notes when it flags durable insight (not on every run)."
-          Type="Variable" Display="advanced" Required="false" Mask="false">true</Config>
-
-  <Config Name="Obsidian knowledge notes folder" Target="OBSIDIAN_KNOWLEDGE_SUBDIR" Default="50_Knowledge/notes"
-          Description="Relative path for new atomic knowledge notes."
-          Type="Variable" Display="advanced" Required="false" Mask="false">50_Knowledge/notes</Config>
-
-  <Config Name="Obsidian MOC folder" Target="OBSIDIAN_KNOWLEDGE_MOC_DIR" Default="50_Knowledge/_moc"
-          Description="MOC index folder. App creates/links MOC-investment-analysis and any topic MOCs Claude suggests."
-          Type="Variable" Display="advanced" Required="false" Mask="false">50_Knowledge/_moc</Config>
-
-  <Config Name="Default investment MOC" Target="OBSIDIAN_DEFAULT_MOC" Default="MOC-investment-analysis"
-          Description="Primary MOC for all run reports and knowledge notes. Created automatically if missing."
-          Type="Variable" Display="advanced" Required="false" Mask="false">MOC-investment-analysis</Config>
+  <Config Name="Obsidian override: knowledge notes" Target="OBSIDIAN_KNOWLEDGE_SUBDIR" Default=""
+          Description="Optional. Default: 50_Knowledge/notes (shared knowledge base). MOC indexes: 50_Knowledge/_moc."
+          Type="Variable" Display="advanced" Required="false" Mask="false"/>
 
   <!-- ── Schedule ───────────────────────────────────────────────────────────── -->
   <Config Name="Analysis Schedule Days" Target="SCHEDULE_DAYS" Default="0,2,5"

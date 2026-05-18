@@ -116,6 +116,29 @@ def create_app() -> Flask:
     except Exception:
         logger.exception("Startup price refresh failed")
 
+    try:
+        from .reports import ReportGenerator
+
+        obs = ReportGenerator().obsidian_status()
+        if obs["ready"]:
+            logger.info(
+                "Obsidian export ready: vault=%s → %s / %s",
+                obs["vault_dir"],
+                obs["full_portfolio_dir"],
+                obs["individual_stock_dir"],
+            )
+        elif obs["mount_exists"]:
+            logger.warning(
+                "Obsidian mount present but export not ready: %s",
+                "; ".join(obs["issues"]) or "unknown",
+            )
+        else:
+            logger.info(
+                "Obsidian export off (set OBSIDIAN_VAULT_DIR=/obsidian and mount vault at /obsidian)",
+            )
+    except Exception:
+        logger.exception("Obsidian startup check failed")
+
     return app
 
 
