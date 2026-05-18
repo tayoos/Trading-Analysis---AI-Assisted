@@ -974,9 +974,9 @@
   {% for card in cards %}
   {% set ticker    = card.ticker %}
   {% set display_name = card.company_name or company_names.get(ticker) or ticker %}
-  {% set price     = card.get('current_price') %}
-  {% set has_price = price is not none and price > 0 %}
-  {% set cost      = card.get('cost_basis') or 0 %}
+  {% set price     = card.get('current_price_account') or card.get('current_price') %}
+  {% set has_price = (price is not none and price > 0) or (card.get('market_price') is not none and card.get('market_price') > 0) %}
+  {% set cost      = card.get('avg_cost_account') or card.get('cost_basis') or 0 %}
   {% set shares    = card.get('shares') or 0 %}
   {% set val       = card.get('position_value') if card.get('position_value') is not none else (price * shares if has_price else none) %}
   {% set has_val   = val is not none and val > 0 %}
@@ -993,7 +993,7 @@
           <span class="analysis-spinner" aria-hidden="true"></span>
           <span class="card-name-text" id="cname-{{ ticker }}">{{ display_name }}</span>
         </div>
-        <div class="card-sub">{{ ticker }}{% if card.market_ticker and card.market_ticker != ticker %} · quotes {{ card.market_ticker }}{% endif %}{% if card.currency_note %} · <span style="color:var(--muted)" title="{{ card.currency_note }}">{{ card.instrument_currency }}</span>{% endif %}{% if card.confidence %} · <span class="conf-badge conf-{{ card.confidence }}">{{ card.confidence }} confidence</span>{% endif %}{% if not has_price and card.price_error %} · <span style="color:var(--hold-short)">no market quote</span>{% elif card.price_source == 't212' %} · <span style="color:var(--muted)">T212 · {{ acct }}</span>{% endif %}</div>
+        <div class="card-sub">{{ ticker }}{% if card.market_ticker and card.market_ticker != ticker %} · quotes {{ card.market_ticker }}{% endif %}{% if card.get('listing_currency') %} · {{ card.listing_currency }}{% endif %}{% if card.confidence %} · <span class="conf-badge conf-{{ card.confidence }}">{{ card.confidence }} confidence</span>{% endif %}{% if not has_price and card.price_error %} · <span style="color:var(--hold-short)">no market quote</span>{% elif card.get('price_source') == 'dual' %} · <span style="color:var(--muted)">value in {{ acct }}</span>{% elif card.get('price_source') == 't212' %} · <span style="color:var(--muted)">T212 · {{ acct }}</span>{% endif %}</div>
       </div>
       <div class="card-header-actions">
         <button type="button" class="card-analyse-btn" title="Analyse this position only"
@@ -1007,7 +1007,7 @@
     </div>
 
     <div class="price-row">
-      <span class="price-val">{% if has_price %}{{ price|money(acct) }}{% else %}—{% endif %}</span>
+      <span class="price-val">{% if has_price or card.get('market_price') %}{{ card|card_price(acct) }}{% else %}—{% endif %}</span>
       <span class="pnl-pill {{ 'pos' if (pnl_pct >= 0) else ('neg' if (has_price and cost) else 'neu') }}">
         {{ '%+.1f'|format(pnl_pct) + '%' if (has_price and cost and cost > 0) else '—' }}
       </span>
@@ -1019,15 +1019,15 @@
         <span class="h-val">{{ '%g'|format(shares) if shares else '—' }}</span>
       </div>
       <div class="h-stat">
-        <span class="h-lbl">Avg Cost ({{ acct }})</span>
-        <span class="h-val">{% if cost %}{{ cost|money(acct) }}{% else %}—{% endif %}</span>
+        <span class="h-lbl">Avg Cost</span>
+        <span class="h-val">{% if cost or card.get('avg_cost_listing') %}{{ card|card_cost(acct) }}{% else %}—{% endif %}</span>
       </div>
       <div class="h-stat">
         <span class="h-lbl">P&amp;L</span>
         <span class="h-val {{ 'pos' if pnl_abs is not none and pnl_abs >= 0 else ('neg' if pnl_abs is not none else '') }}">{% if pnl_abs is not none %}{{ pnl_abs|money_signed(acct) }}{% else %}—{% endif %}</span>
       </div>
       <div class="h-stat">
-        <span class="h-lbl">Value</span>
+        <span class="h-lbl">Value ({{ acct }})</span>
         <span class="h-val">{% if has_val %}{{ val|money(acct) }}{% else %}—{% endif %}</span>
       </div>
     </div>

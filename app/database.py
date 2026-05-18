@@ -180,6 +180,10 @@ class Database:
             conn.execute("ALTER TABLE positions ADD COLUMN instrument_currency TEXT")
         if "market_ticker" not in cols:
             conn.execute("ALTER TABLE positions ADD COLUMN market_ticker TEXT")
+        if "instrument_avg_cost" not in cols:
+            conn.execute("ALTER TABLE positions ADD COLUMN instrument_avg_cost REAL")
+        if "instrument_current_price" not in cols:
+            conn.execute("ALTER TABLE positions ADD COLUMN instrument_current_price REAL")
 
         acols = {row[1] for row in conn.execute("PRAGMA table_info(analyses)")}
         if "account_currency" not in acols:
@@ -379,14 +383,17 @@ class Database:
         isin: Optional[str] = None,
         instrument_currency: Optional[str] = None,
         market_ticker: Optional[str] = None,
+        instrument_avg_cost: Optional[float] = None,
+        instrument_current_price: Optional[float] = None,
     ) -> None:
         with self._conn() as conn:
             conn.execute(
                 """INSERT INTO positions
                    (ticker, shares, avg_cost, source, first_bought, last_updated,
                     current_price, instrument_name, position_value, unrealized_pnl,
-                    t212_raw_ticker, isin, instrument_currency, market_ticker)
-                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                    t212_raw_ticker, isin, instrument_currency, market_ticker,
+                    instrument_avg_cost, instrument_current_price)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                    ON CONFLICT(ticker) DO UPDATE SET
                      shares=excluded.shares, avg_cost=excluded.avg_cost,
                      source=excluded.source, last_updated=excluded.last_updated,
@@ -397,11 +404,14 @@ class Database:
                      t212_raw_ticker=COALESCE(excluded.t212_raw_ticker, positions.t212_raw_ticker),
                      isin=COALESCE(excluded.isin, positions.isin),
                      instrument_currency=COALESCE(excluded.instrument_currency, positions.instrument_currency),
-                     market_ticker=COALESCE(excluded.market_ticker, positions.market_ticker)""",
+                     market_ticker=COALESCE(excluded.market_ticker, positions.market_ticker),
+                     instrument_avg_cost=COALESCE(excluded.instrument_avg_cost, positions.instrument_avg_cost),
+                     instrument_current_price=COALESCE(excluded.instrument_current_price, positions.instrument_current_price)""",
                 (
                     ticker, shares, avg_cost, source, first_bought, _now(),
                     current_price, instrument_name, position_value, unrealized_pnl,
                     t212_raw_ticker, isin, instrument_currency, market_ticker,
+                    instrument_avg_cost, instrument_current_price,
                 ),
             )
 

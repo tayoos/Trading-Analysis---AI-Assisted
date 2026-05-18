@@ -94,10 +94,18 @@ class T212DataSource(DataSource):
             instrument = item.get("instrument") or {}
             inst_currency = instrument.get("currency")
             total_cost = wallet.get("totalCost")
+            raw_avg_paid = item.get("averagePricePaid")
+            instrument_avg_cost = (
+                float(raw_avg_paid) if raw_avg_paid is not None else None
+            )
+            raw_inst_price = item.get("currentPrice")
+            instrument_current_price = (
+                float(raw_inst_price) if raw_inst_price is not None else None
+            )
             if total_cost is not None and qty:
                 avg_cost = float(total_cost) / qty
             else:
-                raw_avg = float(item.get("averagePricePaid", 0))
+                raw_avg = float(raw_avg_paid or 0)
                 avg_cost = _instrument_price_to_account(raw_avg, inst_currency)
             current_price = _account_price_per_share(
                 qty,
@@ -138,6 +146,8 @@ class T212DataSource(DataSource):
                 t212_raw_ticker=raw_ticker or None,
                 isin=isin,
                 instrument_currency=inst_currency,
+                instrument_avg_cost=instrument_avg_cost,
+                instrument_current_price=instrument_current_price,
             ))
         logger.info("T212 ✓ %d positions", len(positions))
         return positions

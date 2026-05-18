@@ -31,7 +31,7 @@ def create_app() -> Flask:
     app = Flask(__name__, template_folder="../templates")
     app.secret_key = os.getenv("SECRET_KEY", os.urandom(24).hex())
 
-    from .currency import format_money, normalize_currency
+    from .currency import card_cost_display, card_price_display, format_money, normalize_currency
 
     @app.template_filter("money")
     def _money_filter(amount, currency="GBP"):
@@ -40,6 +40,14 @@ def create_app() -> Flask:
     @app.template_filter("money_signed")
     def _money_signed_filter(amount, currency="GBP"):
         return format_money(amount, currency, signed=True)
+
+    @app.template_filter("card_price")
+    def _card_price_filter(card, account_currency="GBP"):
+        return card_price_display(card, account_currency)
+
+    @app.template_filter("card_cost")
+    def _card_cost_filter(card, account_currency="GBP"):
+        return card_cost_display(card, account_currency)
 
     @app.template_global()
     def account_currency_default():
