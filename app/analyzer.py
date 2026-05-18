@@ -6,6 +6,7 @@ subscription rather than a separate API key.
 import asyncio
 import json
 import logging
+import re
 import os
 import threading
 from datetime import datetime, timezone
@@ -290,7 +291,7 @@ class StockAnalyzer:
         raw = _call_claude_sync(_SYSTEM_PROMPT + "\n\n" + prompt)
         self._log(f"[{_ts()}] {ticker}: Claude response received ({len(raw)} chars)")
 
-        result = json.loads(raw)
+        result = _parse_analysis_json(raw)
         rec = result.get("recommendation", "?")
         conf = result.get("confidence", "?")
         target = result.get("price_target_30d")
@@ -383,6 +384,53 @@ def _call_claude_sync(prompt: str) -> str:
     if not (raw or "").strip():
         raise RuntimeError("Empty response from Claude")
     return raw
+
+
+def _parse_analysis_json(raw: str) -> dict:
+    """
+    Parse Claude's analysis payload. The Agent SDK sometimes returns markdown
+    fences or brief preamble despite the system prompt asking for raw JSON.
+    """
+    text = (raw or "").strip()
+    if not text:
+        raise ValueError("Empty Claude response")
+    if text.startswith("\ufeff"):
+        text = text.lstrip("\ufeff")
+
+    candidates: list[str] = [text]
+    for pattern in (r"```json\s*([\s\S]*?)```", r"```\s*([\s\S]*?)```"):
+        match = re.search(pattern, text, re.IGNORECASE)
+        if match:
+            candidates.append(match.group(1).strip())
+
+    start, end = text.find("{"), text.rfind("}")
+    if start != -1 and end > start:
+        candidates.append(text[start : end + 1])
+
+    last_err: json.JSONDecodeError | None = None
+    seen: set[str] = set()
+    for candidate in candidates:
+        if not candidate or candidate in seen:
+            continue
+        seen.add(candidate)
+        try:
+            data = json.loads(candidate)
+            if isinstance(data, dict):
+                return data
+        except json.JSONDecodeError as exc:
+            last_err = exc
+            try:
+                data, _ = json.JSONDecoder().raw_decode(candidate.lstrip())
+                if isinstance(data, dict):
+                    return data
+            except json.JSONDecodeError as exc2:
+                last_err = exc2
+
+    preview = text[:120].replace("\n", " ")
+    raise ValueError(
+        f"Could not parse JSON from Claude response ({len(text)} chars). "
+        f"Starts with: {preview!r}"
+    ) from last_err
 
 
 # ── Market data ────────────────────────────────────────────────────────────────
