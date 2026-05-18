@@ -28,6 +28,7 @@ class LivePriceCache:
         self._fetched_at: Optional[float] = None
         self._refreshing = False
         self._names:  dict[str, str]    = {}   # ticker → company name (cached forever)
+        self._currencies: dict[str, str] = {}  # db_ticker → quote currency (USD, GBP, …)
 
     # ── Public API ─────────────────────────────────────────────────────────────
 
@@ -35,11 +36,12 @@ class LivePriceCache:
         """Return the cached price snapshot."""
         with self._lock:
             return {
-                "prices":     dict(self._prices),
-                "names":      dict(self._names),
-                "errors":     dict(self._errors),
-                "fetched_at": self._fetched_at,
-                "stale":      self._is_stale(),
+                "prices":      dict(self._prices),
+                "names":       dict(self._names),
+                "currencies":  dict(self._currencies),
+                "errors":      dict(self._errors),
+                "fetched_at":  self._fetched_at,
+                "stale":       self._is_stale(),
             }
 
     def get_price(self, ticker: str) -> Optional[float]:
@@ -65,18 +67,24 @@ class LivePriceCache:
         with self._lock:
             if self._refreshing:
                 logger.info("Price refresh already in progress — returning cached data")
-                return {"prices": dict(self._prices), "errors": dict(self._errors),
-                        "fetched_at": self._fetched_at, "stale": self._is_stale()}
+                return {
+                    "prices": dict(self._prices),
+                    "currencies": dict(self._currencies),
+                    "errors": dict(self._errors),
+                    "fetched_at": self._fetched_at,
+                    "stale": self._is_stale(),
+                }
             self._refreshing = True
 
         try:
-            prices, errors = _fetch_prices(entries)
+            prices, errors, currencies = _fetch_prices(entries)
         finally:
             with self._lock:
                 self._refreshing = False
 
         with self._lock:
             self._prices.update(prices)
+            self._currencies.update(currencies)
             self._errors.update(errors)
             self._fetched_at = time.time()
 
@@ -167,17 +175,41 @@ def _ticker_candidates(ticker: str) -> list[str]:
     return out
 
 
+def _quote_currency_for_symbol(yf_sym: str) -> Optional[str]:
+    for candidate in _ticker_candidates(yf_sym):
+        try:
+            fast = yf.Ticker(candidate).fast_info
+            cur = getattr(fast, "currency", None)
+            if cur:
+                return str(cur).strip().upper()
+        except Exception:
+            pass
+        try:
+            cur = yf.Ticker(candidate).info.get("currency")
+            if cur:
+                return str(cur).strip().upper()
+        except Exception:
+            pass
+    return None
+
+
 def _fetch_prices(
     entries: list[tuple[str, str]],
-) -> tuple[dict[str, float], dict[str, str]]:
+) -> tuple[dict[str, float], dict[str, str], dict[str, str]]:
     """
     Batch-fetch latest prices from yfinance.
     `entries` is (db_ticker, yfinance_symbol) pairs; prices are keyed by db_ticker.
     Returns (prices_dict, errors_dict).
     """
     prices: dict[str, float] = {}
-    errors: dict[str, str]   = {}
+    errors: dict[str, str] = {}
+    currencies: dict[str, str] = {}
     yf_symbols = list(dict.fromkeys(yf for _, yf in entries))
+    yf_currency: dict[str, str] = {}
+    for yf_sym in yf_symbols:
+        cur = _quote_currency_for_symbol(yf_sym)
+        if cur:
+            yf_currency[yf_sym] = cur
 
     try:
         data = yf.download(
@@ -220,6 +252,8 @@ def _fetch_prices(
     for db_ticker, yf_sym in entries:
         if yf_sym in yf_prices:
             prices[db_ticker] = yf_prices[yf_sym]
+            if yf_sym in yf_currency:
+                currencies[db_ticker] = yf_currency[yf_sym]
         else:
             errors[db_ticker] = "no data from yfinance"
 
@@ -232,4 +266,4 @@ def _fetch_prices(
             ", ".join(sorted(errors)),
         )
 
-    return prices, errors
+    return prices, errors, currencies

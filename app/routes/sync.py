@@ -297,6 +297,8 @@ def _reconcile_positions(t212, db) -> None:
             isin=pos.isin,
             instrument_currency=pos.instrument_currency,
             market_ticker=market_ticker,
+            instrument_avg_cost=pos.instrument_avg_cost,
+            instrument_current_price=pos.instrument_current_price,
         )
         if market_ticker != pos.ticker:
             logger.info(

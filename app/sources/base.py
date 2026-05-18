@@ -26,6 +26,8 @@ class Position:
     t212_raw_ticker: Optional[str] = None   # e.g. SOAC_US_EQ
     isin: Optional[str] = None
     instrument_currency: Optional[str] = None
+    instrument_avg_cost: Optional[float] = None       # per share, listing currency
+    instrument_current_price: Optional[float] = None  # per share, listing currency
     market_ticker: Optional[str] = None     # yfinance symbol for quotes/analysis
 
 

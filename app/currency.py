@@ -104,6 +104,78 @@ def currency_position_note(
     return f"Listed in {inst}; T212 avg cost & value in {acct}"
 
 
+def listing_currency_for(
+    instrument_currency: Optional[str],
+    quote_currency: Optional[str],
+    account_currency: Optional[str],
+) -> str:
+    """Currency used for exchange listing / yfinance quotes."""
+    acct = normalize_currency(account_currency)
+    inst = (instrument_currency or "").strip().upper()
+    if inst == "GBX":
+        return acct
+    if inst and inst != acct:
+        return inst
+    return normalize_currency(quote_currency or inst or acct)
+
+
+def currencies_differ(a: Optional[str], b: Optional[str]) -> bool:
+    return normalize_currency(a) != normalize_currency(b)
+
+
+def format_price_dual(
+    listing_amount: Optional[float],
+    listing_ccy: Optional[str],
+    account_amount: Optional[float],
+    account_ccy: Optional[str],
+) -> str:
+    """e.g. $1.03 (£0.97) when listing is USD and T212 wallet is GBP."""
+    acct = normalize_currency(account_ccy)
+    listing = normalize_currency(listing_ccy or acct)
+
+    if not currencies_differ(listing, acct):
+        return format_money(
+            account_amount if account_amount is not None else listing_amount,
+            acct,
+        )
+
+    parts: list[str] = []
+    if listing_amount is not None:
+        parts.append(format_money(listing_amount, listing))
+    if account_amount is not None:
+        parts.append(f"({format_money(account_amount, acct)})")
+    return " ".join(parts) if parts else "—"
+
+
+def card_price_display(card: dict, account_currency: Optional[str] = None) -> str:
+    acct = normalize_currency(account_currency or card.get("account_currency"))
+    listing = card.get("listing_currency") or card.get("quote_currency")
+    if listing and currencies_differ(listing, acct):
+        return format_price_dual(
+            card.get("market_price") or card.get("current_price_listing"),
+            listing,
+            card.get("current_price_account") or card.get("current_price"),
+            acct,
+        )
+    return format_money(
+        card.get("current_price_account") or card.get("current_price"),
+        acct,
+    )
+
+
+def card_cost_display(card: dict, account_currency: Optional[str] = None) -> str:
+    acct = normalize_currency(account_currency or card.get("account_currency"))
+    listing = card.get("listing_currency") or card.get("quote_currency")
+    if listing and currencies_differ(listing, acct):
+        return format_price_dual(
+            card.get("avg_cost_listing"),
+            listing,
+            card.get("avg_cost_account") or card.get("cost_basis"),
+            acct,
+        )
+    return format_money(card.get("avg_cost_account") or card.get("cost_basis"), acct)
+
+
 def enrich_position_currencies(
     holding: dict,
     account_currency: Optional[str],
