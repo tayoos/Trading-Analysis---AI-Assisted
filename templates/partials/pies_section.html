@@ -32,7 +32,34 @@
       {% if pie.analysis and pie.analysis.reasoning %}
       <div class="pie-t212-analysis">
         <div class="pie-t212-analysis-label">Combined pie view</div>
-        <div class="reasoning">{{ pie.analysis.reasoning }}</div>
+        <div class="reasoning pie-reasoning">{{ pie.analysis.reasoning }}</div>
+        <button type="button" class="pie-analysis-expand" onclick="event.stopPropagation(); togglePieAnalysis(this)" aria-expanded="false">
+          <span class="pie-analysis-expand-label">Read full analysis</span>
+          <span class="expand-chevron" aria-hidden="true">›</span>
+        </button>
+        {% if pie.analysis.news_sentiment or pie.analysis.catalysts or pie.analysis.risks %}
+        <div class="pie-analysis-extra" hidden>
+          {% if pie.analysis.news_sentiment %}
+          <span class="sent-pill sent-{{ pie.analysis.news_sentiment }}">{{ pie.analysis.news_sentiment }}</span>
+          {% endif %}
+          {% if pie.analysis.catalysts or pie.analysis.risks %}
+          <div class="tag-groups">
+            {% if pie.analysis.catalysts %}
+            <div class="tag-row">
+              <span class="tag-lbl cat">Catalysts</span>
+              {% for c in (pie.analysis.catalysts or [])[:3] %}<span class="tag-pill cat">{{ c }}</span>{% endfor %}
+            </div>
+            {% endif %}
+            {% if pie.analysis.risks %}
+            <div class="tag-row">
+              <span class="tag-lbl risk">Risks</span>
+              {% for r in (pie.analysis.risks or [])[:3] %}<span class="tag-pill risk">{{ r }}</span>{% endfor %}
+            </div>
+            {% endif %}
+          </div>
+          {% endif %}
+        </div>
+        {% endif %}
       </div>
       {% else %}
       <p class="pie-t212-analysis empty">Run Analysis for a combined recommendation for this pie.</p>
