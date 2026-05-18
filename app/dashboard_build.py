@@ -139,6 +139,38 @@ def build_card(
     return card
 
 
+_SHARE_EPS = 1e-6
+
+
+def _card_for_shares_outside_pies(
+    card: dict,
+    position: dict | None,
+    pie_qty: float,
+) -> dict | None:
+    """Dashboard card for the slice of a position not allocated to any pie."""
+    total = float(card.get("shares") or (position or {}).get("shares") or 0)
+    if total <= _SHARE_EPS:
+        return None
+    outside = total - pie_qty
+    if outside <= _SHARE_EPS:
+        return None
+
+    out = dict(card)
+    if outside >= total - _SHARE_EPS:
+        if pie_qty > _SHARE_EPS:
+            out["also_in_pie"] = True
+        return out
+
+    ratio = outside / total
+    out["shares"] = outside
+    out["also_in_pie"] = True
+    if out.get("position_value") is not None:
+        out["position_value"] = round(float(out["position_value"]) * ratio, 2)
+    if out.get("unrealized_pnl") is not None:
+        out["unrealized_pnl"] = round(float(out["unrealized_pnl"]) * ratio, 2)
+    return out
+
+
 def build_dashboard_view(
     db,
     price_cache,
@@ -249,10 +281,17 @@ def build_dashboard_view(
             "member_cards": member_cards,
         })
 
-    standalone_cards = [
-        c for t, c in cards_by_ticker.items()
-        if not c.get("in_pie_only")
-    ]
+    standalone_cards = []
+    for ticker, card in cards_by_ticker.items():
+        if card.get("in_pie_only"):
+            continue
+        outside = _card_for_shares_outside_pies(
+            card,
+            pos_map.get(ticker),
+            pie_qty_by_ticker.get(ticker, 0),
+        )
+        if outside:
+            standalone_cards.append(outside)
     standalone_cards.sort(
         key=lambda c: c.get("position_value") or 0,
         reverse=True,
