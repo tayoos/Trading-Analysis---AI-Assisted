@@ -55,8 +55,27 @@ JSON schema (all fields required):
     "trend_flags": [],
     "ongoing_risks": ["<risk 1>", "<risk 2>"],
     "ongoing_catalysts": ["<catalyst 1>", "<catalyst 2>"]
-  }
+  },
+  "knowledge_notes": []
 }
+
+knowledge_notes (optional array — use [] when nothing qualifies):
+Each item is durable, reusable insight for the user's Obsidian knowledge base (not this trade alone):
+{
+  "slug": "<kebab-case-id, e.g. tmc-soac-t212-ticker-map>",
+  "title": "<short note title>",
+  "body": "<2-5 sentences markdown — fact/framework/mapping the user should remember>",
+  "mocs": ["MOC-uk-reits"]
+}
+The app always links every note to MOC-investment-analysis (and creates it if missing). Add extra mocs only for clear topic fit (e.g. MOC-uk-reits for REIT holdings).
+
+When to add knowledge_notes (be selective — most runs should use []):
+- Ticker/identity mapping (e.g. T212 legacy SPAC code vs live market symbol)
+- Sector or instrument-type insight that applies beyond one position
+- A material change to investment thesis worth remembering long-term
+- Correction of a prior misconception (e.g. delisted shell vs post-merger equity)
+
+Do NOT add knowledge_notes for: routine HOLD/BUY recaps, price targets, P&L, or text that only belongs in the run report.
 
 Guidelines:
 - Base targets on realistic near-term fundamentals, not wishful thinking.
@@ -123,9 +142,14 @@ class StockAnalyzer:
 
     # ── Main entry point ───────────────────────────────────────────────────────
 
-    def run_analysis(self, holdings: list[dict]) -> int:
+    def run_analysis(
+        self,
+        holdings: list[dict],
+        *,
+        generate_reports: bool = True,
+    ) -> int:
         """
-        Analyse all holdings. Returns the run_id.
+        Analyse the given holdings. Returns the run_id.
         Designed to be called in a background thread.
         """
         if self._status == "running":
@@ -140,7 +164,10 @@ class StockAnalyzer:
             self._error_kind = None
             self._error_message = None
 
-        self._log(f"[{_ts()}] Starting analysis for {len(holdings)} holdings")
+        if len(holdings) == 1:
+            self._log(f"[{_ts()}] Single-ticker analysis: {holdings[0]['ticker']}")
+        else:
+            self._log(f"[{_ts()}] Starting analysis for {len(holdings)} holdings")
 
         saved_count = 0
         quota_message: Optional[str] = None
@@ -152,6 +179,9 @@ class StockAnalyzer:
                 try:
                     self._log(f"[{_ts()}] Analysing {ticker}…")
                     result = self._analyse_ticker(holding)
+                    _persist_knowledge_notes(
+                        run_id, holding, result.pop("knowledge_notes", None), self._log,
+                    )
                     self.db.save_analysis(run_id, ticker, result)
                     saved_count += 1
                     if "handoff_note" in result:
@@ -179,7 +209,10 @@ class StockAnalyzer:
             else:
                 self.db.finish_run(run_id, "done", saved_count)
                 self._log(f"[{_ts()}] Analysis complete.")
-                _generate_run_reports(self.db, run_id, self._log)
+                if generate_reports:
+                    _generate_run_reports(self.db, run_id, self._log)
+                else:
+                    _generate_obsidian_report(self.db, run_id, self._log)
                 self._set_status("done")
 
         except Exception as exc:
@@ -290,10 +323,16 @@ class StockAnalyzer:
 
     # ── Background runner ──────────────────────────────────────────────────────
 
-    def run_in_background(self, holdings: list[dict]) -> None:
+    def run_in_background(
+        self,
+        holdings: list[dict],
+        *,
+        generate_reports: bool = True,
+    ) -> None:
         t = threading.Thread(
             target=self.run_analysis,
             args=(holdings,),
+            kwargs={"generate_reports": generate_reports},
             daemon=True,
             name="analyzer",
         )
@@ -339,7 +378,7 @@ def _ts() -> str:
 
 
 def _generate_run_reports(db: Database, run_id: int, log_fn) -> None:
-    """Write Excel + text reports after a successful analysis run."""
+    """Write Excel + text + optional Obsidian reports after a successful analysis run."""
     try:
         analyses = db.get_analyses_for_run(run_id)
         if not analyses:
@@ -349,10 +388,58 @@ def _generate_run_reports(db: Database, run_id: int, log_fn) -> None:
         gen = ReportGenerator()
         xlsx = gen.generate_excel(run_id, analyses)
         txt = gen.generate_text(run_id, analyses)
-        log_fn(f"[{_ts()}] Reports: {xlsx} | {txt}")
+        md = gen.generate_markdown(run_id, analyses)
+        parts = [xlsx, txt]
+        if md:
+            parts.append(md)
+        log_fn(f"[{_ts()}] Reports: {' | '.join(parts)}")
     except Exception as exc:
         logger.exception("Report generation failed for run %s: %s", run_id, exc)
         log_fn(f"[{_ts()}] Report generation failed: {exc}")
+
+
+def _persist_knowledge_notes(
+    run_id: int,
+    holding: dict,
+    knowledge_notes: Optional[list],
+    log_fn,
+) -> None:
+    if not knowledge_notes:
+        return
+    try:
+        from .reports import ReportGenerator
+
+        gen = ReportGenerator()
+        paths = gen.write_knowledge_notes(
+            run_id,
+            holding["ticker"],
+            knowledge_notes,
+            market_ticker=holding.get("market_ticker"),
+        )
+        for p in paths:
+            log_fn(f"[{_ts()}] Knowledge note: {p}")
+    except Exception as exc:
+        logger.exception("Knowledge note write failed for run %s", run_id)
+        log_fn(f"[{_ts()}] Knowledge note failed: {exc}")
+
+
+def _generate_obsidian_report(db: Database, run_id: int, log_fn) -> None:
+    """Obsidian-only export (e.g. after a single-ticker ↻ run)."""
+    try:
+        analyses = db.get_analyses_for_run(run_id)
+        if not analyses:
+            return
+        from .reports import ReportGenerator
+
+        gen = ReportGenerator()
+        if not gen.obsidian_enabled():
+            return
+        path = gen.generate_markdown(run_id, analyses)
+        if path:
+            log_fn(f"[{_ts()}] Obsidian report: {path}")
+    except Exception as exc:
+        logger.exception("Obsidian report failed for run %s: %s", run_id, exc)
+        log_fn(f"[{_ts()}] Obsidian report failed: {exc}")
 
 
 def _ensure_market_ticker(holding: dict, db: Database) -> str:

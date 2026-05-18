@@ -181,6 +181,60 @@
     padding: 16px 16px 6px;
   }
 
+  .card-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+  }
+
+  .card-analyse-btn {
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--surface2, rgba(255,255,255,.04));
+    color: var(--muted);
+    font-size: 15px;
+    line-height: 1;
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+
+  .card-analyse-btn:hover:not(:disabled) {
+    color: var(--text);
+    border-color: rgba(33,150,243,.45);
+    background: rgba(33,150,243,.08);
+  }
+
+  .card-analyse-btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+
+  .pie-analyse-btn {
+    margin-left: 4px;
+    font-size: 12px;
+    padding: 4px 8px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: transparent;
+    color: var(--muted);
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+
+  .pie-analyse-btn:hover:not(:disabled) {
+    color: var(--text);
+    border-color: rgba(33,150,243,.45);
+  }
+
+  .pie-analyse-btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+
   .card-identity { flex: 1; min-width: 0; }
 
   .card-name {
@@ -900,6 +954,7 @@
 <div class="controls-row">
   <button class="btn-primary" id="run-btn" onclick="triggerRun()">Run Analysis</button>
   <button class="btn-secondary" onclick="location.href='/sync'">Sync T212</button>
+  <span class="run-hint" style="font-size:12px;color:var(--muted)">↻ on a card analyses that position only</span>
   <span class="run-status" id="run-status-text"></span>
 </div>
 
@@ -938,7 +993,11 @@
         </div>
         <div class="card-sub">{{ ticker }}{% if card.market_ticker and card.market_ticker != ticker %} · quotes {{ card.market_ticker }}{% endif %}{% if card.confidence %} · <span class="conf-badge conf-{{ card.confidence }}">{{ card.confidence }} confidence</span>{% endif %}{% if not has_price and card.price_error %} · <span style="color:var(--hold-short)">no market quote</span>{% elif card.price_source == 't212' %} · <span style="color:var(--muted)">T212 price</span>{% endif %}</div>
       </div>
-      <span class="badge badge-{{ rec }}">{{ rec | replace('_', ' ') }}</span>
+      <div class="card-header-actions">
+        <button type="button" class="card-analyse-btn" title="Analyse this position only"
+          onclick="event.stopPropagation(); triggerSingleRun('{{ ticker }}')">↻</button>
+        <span class="badge badge-{{ rec }}">{{ rec | replace('_', ' ') }}</span>
+      </div>
     </div>
 
     <div class="spark-wrap">
@@ -1195,13 +1254,20 @@
     document.getElementById('run-status-text').textContent = '';
   }
 
+  function setAnalysisButtonsDisabled(disabled) {
+    const btn = document.getElementById('run-btn');
+    if (btn) btn.disabled = disabled;
+    document.querySelectorAll('.card-analyse-btn, .pie-analyse-btn').forEach(b => {
+      b.disabled = disabled;
+    });
+  }
+
   async function pollStatus() {
     try {
       const r = await fetch('/api/status');
       const d = await r.json();
       const banner = document.getElementById('status-banner');
       const logEl  = document.getElementById('log-lines');
-      const btn    = document.getElementById('run-btn');
       const navEl  = document.getElementById('nav-status');
 
       if (d.status === 'running') {
@@ -1209,7 +1275,7 @@
         clearAnalysisErrorUi();
         const lines = d.progress || [];
         logEl.textContent = lines.length ? lines[lines.length - 1] : 'Running…';
-        btn.disabled = true;
+        setAnalysisButtonsDisabled(true);
         const current = parseAnalysingTicker(d);
         updateAnalysingHighlight(current);
         navEl.textContent = current
@@ -1218,7 +1284,7 @@
         if (!polling) polling = true;
         setTimeout(pollStatus, 2000);
       } else if (d.status === 'error') {
-        btn.disabled = false;
+        setAnalysisButtonsDisabled(false);
         updateAnalysingHighlight(null);
         showAnalysisError(d);
         if (polling) {
@@ -1226,7 +1292,7 @@
         }
       } else {
         banner.className = '';
-        btn.disabled = false;
+        setAnalysisButtonsDisabled(false);
         updateAnalysingHighlight(null);
         clearAnalysisErrorUi();
         navEl.textContent = d.status === 'done' ? 'Last run complete ✓' : '';
@@ -1242,25 +1308,33 @@
     }
   }
 
-  async function triggerRun() {
-    const btn = document.getElementById('run-btn');
-    btn.disabled = true;
+  async function startAnalysisRun(url) {
+    setAnalysisButtonsDisabled(true);
     clearAnalysisErrorUi();
     document.getElementById('status-banner').className = '';
     try {
-      const r = await fetch('/api/run', { method: 'POST' });
+      const r = await fetch(url, { method: 'POST' });
       if (r.ok) {
         polling = true;
         pollStatus();
       } else {
         const d = await r.json();
         alert(d.error || 'Failed to start run');
-        btn.disabled = false;
+        setAnalysisButtonsDisabled(false);
       }
-    } catch(e) {
+    } catch (e) {
       alert('Request failed');
-      btn.disabled = false;
+      setAnalysisButtonsDisabled(false);
     }
+  }
+
+  function triggerRun() {
+    startAnalysisRun('/api/run');
+  }
+
+  function triggerSingleRun(ticker) {
+    const encoded = encodeURIComponent(ticker);
+    startAnalysisRun('/api/run/ticker/' + encoded);
   }
 
   // ── Sparklines ──────────────────────────────────────────────────────────────

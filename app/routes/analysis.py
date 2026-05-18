@@ -3,9 +3,41 @@ from threading import Lock
 
 from flask import Blueprint, current_app, jsonify, request
 
-from ..dashboard_build import build_dashboard_view
+from ..capital import build_pie_holdings
+from ..dashboard_build import build_dashboard_view, is_pie_ticker
 
 bp = Blueprint("analysis", __name__)
+
+
+def _holdings_for_ticker(
+    ticker: str,
+    portfolio,
+    db,
+    price_cache,
+) -> dict | None:
+    """Return one holding dict for analysis, or None if unknown."""
+    ticker = (ticker or "").upper().strip()
+    if not ticker:
+        return None
+
+    live_prices = price_cache.get_prices().get("prices", {})
+
+    if is_pie_ticker(ticker):
+        for holding in build_pie_holdings(db, live_prices):
+            if holding["ticker"].upper() == ticker:
+                return holding
+        return None
+
+    for holding in portfolio.get_holdings():
+        if holding["ticker"].upper() == ticker:
+            return holding
+    return None
+
+
+def _all_holdings(portfolio, db, price_cache) -> list[dict]:
+    live_prices = price_cache.get_prices().get("prices", {})
+    holdings = portfolio.get_holdings()
+    return holdings + build_pie_holdings(db, live_prices)
 
 # Simple in-memory sparkline cache: ticker → {data, expires_at}
 _sparkline_cache: dict = {}
@@ -23,15 +55,35 @@ def trigger_run():
 
     db = current_app.extensions["db"]
     price_cache = current_app.extensions["price_cache"]
-    holdings = portfolio.get_holdings()
+    holdings = _all_holdings(portfolio, db, price_cache)
     if not holdings:
         return jsonify({"error": "No holdings found. Add stocks.xlsx or sync T212."}), 400
 
-    from ..capital import build_pie_holdings
-    holdings = holdings + build_pie_holdings(db, price_cache.get_prices().get("prices", {}))
-
     analyzer.run_in_background(holdings)
-    return jsonify({"status": "started", "ticker_count": len(holdings)}), 202
+    return jsonify({"status": "started", "ticker_count": len(holdings), "scope": "full"}), 202
+
+
+@bp.post("/api/run/ticker/<path:ticker>")
+def trigger_single_run(ticker: str):
+    analyzer = current_app.extensions["analyzer"]
+    portfolio = current_app.extensions["portfolio"]
+
+    if analyzer.status["status"] == "running":
+        return jsonify({"error": "Analysis already running"}), 409
+
+    db = current_app.extensions["db"]
+    price_cache = current_app.extensions["price_cache"]
+    holding = _holdings_for_ticker(ticker, portfolio, db, price_cache)
+    if not holding:
+        return jsonify({"error": f"Unknown ticker: {ticker.upper()}"}), 404
+
+    analyzer.run_in_background([holding], generate_reports=False)
+    return jsonify({
+        "status": "started",
+        "ticker": holding["ticker"],
+        "ticker_count": 1,
+        "scope": "single",
+    }), 202
 
 
 @bp.get("/api/status")

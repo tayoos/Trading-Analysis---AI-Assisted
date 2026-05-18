@@ -49,6 +49,11 @@
     /mnt/user/appdata/stock-analyzer/claude-auth
   </Config>
 
+  <Config Name="Obsidian vault" Target="/obsidian"
+          Default="/mnt/user/appdata/obsidian/MyVault"
+          Description="Host path to your Obsidian vault ROOT (the folder that contains 10_Personal/, etc.). Markdown analysis reports are written into a subfolder below — leave blank to disable."
+          Type="Path" Display="always" Required="false" Mask="false"/>
+
   <!-- ── T212 API ───────────────────────────────────────────────────────────── -->
   <Config Name="Trading 212 API Key" Target="TRADING212_API_KEY" Default=""
           Description="T212 API Key. In T212: Settings → API → Create key. Read-only scope is sufficient."
@@ -82,6 +87,31 @@
   <Config Name="Reports Retention Days" Target="REPORTS_RETENTION_DAYS" Default="365"
           Description="Reports older than this many days are deleted automatically on each analysis run."
           Type="Variable" Display="advanced" Required="false" Mask="false">365</Config>
+
+  <Config Name="Obsidian reports folder" Target="OBSIDIAN_VAULT_DIR" Default="/obsidian"
+          Description="Container path where the Obsidian vault is mounted. Must match the volume above (/obsidian). Leave OBSIDIAN vault path empty to disable markdown export."
+          Type="Variable" Display="advanced" Required="false" Mask="false">/obsidian</Config>
+
+  <Config Name="Obsidian reports subfolder" Target="OBSIDIAN_REPORTS_SUBDIR"
+          Default="10_Personal/13_Finances/AI Investment Analysis"
+          Description="Folder inside the vault for .md reports (relative to vault root). Created automatically if missing."
+          Type="Variable" Display="advanced" Required="false" Mask="false">10_Personal/13_Finances/AI Investment Analysis</Config>
+
+  <Config Name="Obsidian knowledge enabled" Target="OBSIDIAN_KNOWLEDGE_ENABLED" Default="true"
+          Description="When true, Claude may write atomic notes to 50_Knowledge/notes when it flags durable insight (not on every run)."
+          Type="Variable" Display="advanced" Required="false" Mask="false">true</Config>
+
+  <Config Name="Obsidian knowledge notes folder" Target="OBSIDIAN_KNOWLEDGE_SUBDIR" Default="50_Knowledge/notes"
+          Description="Relative path for new atomic knowledge notes."
+          Type="Variable" Display="advanced" Required="false" Mask="false">50_Knowledge/notes</Config>
+
+  <Config Name="Obsidian MOC folder" Target="OBSIDIAN_KNOWLEDGE_MOC_DIR" Default="50_Knowledge/_moc"
+          Description="MOC index folder. App creates/links MOC-investment-analysis and any topic MOCs Claude suggests."
+          Type="Variable" Display="advanced" Required="false" Mask="false">50_Knowledge/_moc</Config>
+
+  <Config Name="Default investment MOC" Target="OBSIDIAN_DEFAULT_MOC" Default="MOC-investment-analysis"
+          Description="Primary MOC for all run reports and knowledge notes. Created automatically if missing."
+          Type="Variable" Display="advanced" Required="false" Mask="false">MOC-investment-analysis</Config>
 
   <!-- ── Schedule ───────────────────────────────────────────────────────────── -->
   <Config Name="Analysis Schedule Days" Target="SCHEDULE_DAYS" Default="0,2,5"
