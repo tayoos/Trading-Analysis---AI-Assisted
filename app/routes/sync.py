@@ -131,7 +131,7 @@ def sync_t212():
             # _rebuild_positions can zero out positions that were opened before
             # the first sync (missing buy history). T212 is the source of truth
             # for what is currently open, so we upsert live positions on top.
-            _reconcile_positions(t212, db)
+            _reconcile_positions(t212, db, portfolio)
 
             with _sync_lock:
                 _sync_state["message"] = "Refreshing capital metrics…"
@@ -250,32 +250,35 @@ def get_portfolio():
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
-def _reconcile_positions(t212, db) -> None:
+def _reconcile_positions(t212, db, portfolio) -> None:
     """
     Fetch live open positions from T212 and upsert them into the DB.
 
-    This acts as a reconciliation step after _rebuild_positions: if trade
-    history is incomplete (positions opened before the first sync), the AVCO
-    rebuild incorrectly closes them. T212's /positions endpoint is the
-    authoritative source for what is currently open.
-
-    Positions T212 no longer reports are left untouched — _rebuild_positions
-    already handles closed position cleanup via owned_history.
+    T212 is authoritative for what is open. Anything not reported (or below
+    dust threshold) is removed and archived to owned_history.
     """
+    from ..position_lifecycle import is_open_position
+    from ..ticker_resolve import resolve_market_ticker
+
     try:
         live = t212.get_positions()
     except Exception:
         logger.warning("Could not fetch live positions for reconciliation — skipping")
         return
 
+    live = live or []
     if not live:
         logger.info("T212 reconcile: no open positions reported by T212")
-        return
-
-    from ..ticker_resolve import resolve_market_ticker
 
     live_tickers: set[str] = set()
     for pos in live:
+        if not is_open_position(pos.shares):
+            logger.debug(
+                "T212 reconcile: skipping dust position %s (%.6f shares)",
+                pos.ticker,
+                pos.shares,
+            )
+            continue
         live_tickers.add(pos.ticker)
         market_ticker = resolve_market_ticker(
             pos.ticker,
@@ -308,13 +311,22 @@ def _reconcile_positions(t212, db) -> None:
                 market_ticker,
             )
     removed = db.prune_positions_not_in(live_tickers, source="trading212")
+    archived = portfolio.archive_pruned_positions(removed) if removed else []
     if removed:
         logger.info(
-            "T212 reconcile: removed %d stale position(s) not on T212: %s",
+            "T212 reconcile: removed %d closed/stale position(s): %s",
             len(removed),
             ", ".join(sorted(removed)),
         )
-    logger.info("T212 reconcile: upserted %d live position(s) from T212", len(live))
+    if archived:
+        logger.info(
+            "T212 reconcile: archived to owned_history: %s",
+            ", ".join(sorted(archived)),
+        )
+    logger.info(
+        "T212 reconcile: %d open on T212, upserted from API",
+        len(live_tickers),
+    )
 
 
 def _last_dividend_sync(db) -> str | None:

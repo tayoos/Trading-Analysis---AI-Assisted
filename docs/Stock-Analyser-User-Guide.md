@@ -19,9 +19,10 @@ Repository: [Trading-Analysis---AI-Assisted](https://github.com/tayoos/Trading-A
 
 ## What it does
 
-- Syncs open positions from **Trading 212** (or `stocks.xlsx` as fallback).
+- Syncs open positions, **pies**, trades, and dividends from **Trading 212** (or `stocks.xlsx` as fallback).
+- Archives **fully sold** holdings to **History → Closed Positions** (removed from the main dashboard).
 - Fetches live market data via **yfinance** (resolves legacy T212 tickers, e.g. SOAC → TMC).
-- Runs **Claude** (`claude login` in the container) for structured recommendations per holding.
+- Runs **Claude** (`claude login` in the container) for structured recommendations per holding and per pie.
 - Dashboard on port **8765**.
 - Writes **Excel/text** reports, **Obsidian** run notes, optional **knowledge notes**, and **MOC** links.
 
@@ -132,6 +133,74 @@ Mount the **vault root**, not `AI Investment Analysis` or `50_Knowledge` alone.
 | **Sync T212** | None | None | None |
 
 Hint on dashboard: *↻ on a card analyses that position only.*
+
+---
+
+## Dashboard layout: Pies vs Stocks
+
+After **Sync T212**, the dashboard splits holdings into two areas:
+
+| Section | What appears here |
+|---------|-------------------|
+| **Pies** | Each Trading 212 pie you own (expand for combined analysis + member list) |
+| **Stocks** | Positions **not** fully allocated to a pie, or only the slice held **outside** pies |
+
+Stocks that sit **entirely inside a pie** show only under that pie’s **Holdings** rows (click a row for the same detail modal as a full card). They do **not** duplicate as full cards in **Stocks**.
+
+| Action | Scope |
+|--------|--------|
+| **↻ Analyse** on pie header | Combined pie view (`PIE:{id}`) — one Claude pass for the pie as a portfolio |
+| **↻** on a stock card | That ticker only |
+| Click a pie holding row | Opens the stock modal for that ticker |
+
+Pie membership comes from T212’s pies API (synced during **Sync T212**; detail calls are rate-limited, so a full pie sync can take several seconds per pie).
+
+---
+
+## Full Run Analysis — what gets analysed
+
+**Run Analysis** (full portfolio) runs Claude on:
+
+1. **Every open position** in your account (each ticker once, at full position size), and  
+2. **Every pie** as a synthetic holding (`PIE:{id}`) for a combined pie-level recommendation.
+
+So you get both per-stock write-ups and per-pie portfolio-style analysis. **↻** on a single card or pie runs only that item.
+
+---
+
+## Sold positions and archiving
+
+When you **fully sell** a holding, the app should **remove it from the dashboard** and **archive** it for history.
+
+### Where archived stocks appear
+
+| Location | Contents |
+|----------|----------|
+| **History → Trades** | **Closed Positions** table at the top (ticker, first bought, sold date, avg cost, realised P&L) |
+| **`/ticker/{TICKER}`** | Past analysis and owned-history row if archived |
+
+Archives are stored in SQLite (`owned_history`), not as separate Obsidian files. Obsidian run reports you already generated stay in **Full Portfolio/** or **Individual Stock/**.
+
+### When archiving happens
+
+| Event | Behaviour |
+|-------|-----------|
+| **Sync T212** | Live T212 positions are authoritative. Tickers T212 no longer reports are **removed** from the active book and **archived** (when trade history exists). |
+| **Trade rebuild** | AVCO from imported trades; positions below the dust threshold are treated as flat and archived. |
+| **Dashboard load** | Sub-threshold “dust” leftovers (e.g. `0.02` shares from rounding) are purged and archived when possible. |
+
+The dashboard only builds cards for **open** positions (above **0.05 shares**). Old analysis alone does **not** keep a sold ticker on the main grid.
+
+### Dust and rounding
+
+Very small balances (below **0.05 shares**) are treated as **flat** — common after AVCO rounding or fractional leftovers. If T212 still reports a tiny line, sync keeps it until the broker shows zero; sell the remainder on T212 if needed.
+
+### If a sold stock still appears
+
+1. Run **Sync T212** (reconcile + archive).  
+2. Refresh the dashboard.  
+3. Check **History → Trades → Closed Positions** for the ticker.  
+4. If it remains with a non-zero share count, T212 may still list a dust balance — check the T212 app.
 
 ---
 
@@ -306,6 +375,9 @@ Stored in SQLite (`handoff_notes`), not as separate Obsidian files. Feeds the ne
 | Wrong folder names | Set `OBSIDIAN_REPORTS_FULL_SUBDIR` / `OBSIDIAN_REPORTS_SINGLE_SUBDIR` or rename folders in Obsidian |
 | Old reports in parent folder | Legacy; new runs use **Full Portfolio/** and **Individual Stock/** |
 | Stale SOAC analysis | Sync → **↻** |
+| Sold stock still on dashboard | **Sync T212** → refresh; see **Sold positions and archiving** |
+| Stock only under Pies, not Stocks | Expected when 100% of shares are in that pie |
+| Pie empty or missing holdings | Run **Sync T212** (pies sync after trades; allow time per pie) |
 | No knowledge notes | Normal (most runs use `[]`) |
 | No topic MOC link | Claude must list `mocs` on a knowledge note |
 | Analysis already running | Wait for current run |
@@ -347,4 +419,4 @@ Link from `[[MOC-homelab]]` or `[[MOC-investment-analysis]]`.
 
 ---
 
-*Guide version: per-card ↻, Full Portfolio / Individual Stock report folders, knowledge notes, auto MOC create/link, ticker resolution.*
+*Guide version: pies vs Stocks layout, sold-position archiving, per-card ↻, Full Portfolio / Individual Stock report folders, knowledge notes, auto MOC create/link, ticker resolution.*
