@@ -94,8 +94,16 @@
 
   <Config Name="Obsidian reports subfolder" Target="OBSIDIAN_REPORTS_SUBDIR"
           Default="10_Personal/13_Finances/AI Investment Analysis"
-          Description="Folder inside the vault for .md reports (relative to vault root). Created automatically if missing."
+          Description="Base folder for .md run reports (relative to vault root)."
           Type="Variable" Display="advanced" Required="false" Mask="false">10_Personal/13_Finances/AI Investment Analysis</Config>
+
+  <Config Name="Obsidian full portfolio subfolder" Target="OBSIDIAN_REPORTS_FULL_SUBDIR" Default="Full Portfolio"
+          Description="Subfolder under reports base for Run Analysis (whole portfolio)."
+          Type="Variable" Display="advanced" Required="false" Mask="false">Full Portfolio</Config>
+
+  <Config Name="Obsidian individual stock subfolder" Target="OBSIDIAN_REPORTS_SINGLE_SUBDIR" Default="Individual Stock"
+          Description="Subfolder under reports base for per-card ↻ analysis."
+          Type="Variable" Display="advanced" Required="false" Mask="false">Individual Stock</Config>
 
   <Config Name="Obsidian knowledge enabled" Target="OBSIDIAN_KNOWLEDGE_ENABLED" Default="true"
           Description="When true, Claude may write atomic notes to 50_Knowledge/notes when it flags durable insight (not on every run)."

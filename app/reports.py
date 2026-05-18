@@ -92,6 +92,53 @@ class ReportGenerator:
                        else os.getenv("OBSIDIAN_DEFAULT_MOC", "MOC-investment-analysis"))
         self.obsidian_default_moc = (default_moc or "").strip()
 
+        self.reports_full_subdir = _env_subdir(
+            "REPORTS_FULL_SUBDIR", "full",
+        )
+        self.reports_single_subdir = _env_subdir(
+            "REPORTS_SINGLE_SUBDIR", "single",
+        )
+        self.obsidian_full_subdir = _env_subdir(
+            "OBSIDIAN_REPORTS_FULL_SUBDIR", "Full Portfolio",
+        )
+        self.obsidian_single_subdir = _env_subdir(
+            "OBSIDIAN_REPORTS_SINGLE_SUBDIR", "Individual Stock",
+        )
+
+    def _run_scope_key(self, run_scope: str) -> str:
+        return "single" if (run_scope or "").strip().lower() == "single" else "full"
+
+    def _disk_reports_dir(self, run_scope: str) -> str:
+        """/data/reports/full or /data/reports/single"""
+        scope = self._run_scope_key(run_scope)
+        sub = (
+            self.reports_single_subdir if scope == "single"
+            else self.reports_full_subdir
+        )
+        path = os.path.join(self.reports_dir, sub)
+        os.makedirs(path, exist_ok=True)
+        return path
+
+    def _obsidian_reports_dir(self, run_scope: str) -> str:
+        """Vault path: …/AI Investment Analysis/Full Portfolio|Individual Stock"""
+        scope = self._run_scope_key(run_scope)
+        sub = (
+            self.obsidian_single_subdir if scope == "single"
+            else self.obsidian_full_subdir
+        )
+        base = self.obsidian_reports_subdir
+        path = os.path.join(self.obsidian_vault_dir, base, sub) if base else ""
+        if path:
+            os.makedirs(path, exist_ok=True)
+        return path
+
+    def _moc_runs_section(self, run_scope: str) -> str:
+        return (
+            "Individual Stock runs"
+            if self._run_scope_key(run_scope) == "single"
+            else "Full Portfolio runs"
+        )
+
     def obsidian_moc_active(self) -> bool:
         return bool(
             self.obsidian_vault_dir
@@ -108,11 +155,13 @@ class ReportGenerator:
 
     # ── Excel ──────────────────────────────────────────────────────────────────
 
-    def generate_excel(self, run_id: int, analyses: list[dict]) -> str:
+    def generate_excel(
+        self, run_id: int, analyses: list[dict], *, run_scope: str = "full",
+    ) -> str:
         self._rotate_old_reports()
 
         filename = f"analysis_run{run_id}_{_date_stamp()}.xlsx"
-        path = os.path.join(self.reports_dir, filename)
+        path = os.path.join(self._disk_reports_dir(run_scope), filename)
 
         wb = openpyxl.Workbook()
         ws = wb.active
@@ -187,12 +236,14 @@ class ReportGenerator:
 
     # ── Plain text ─────────────────────────────────────────────────────────────
 
-    def generate_text(self, run_id: int, analyses: list[dict]) -> str:
+    def generate_text(
+        self, run_id: int, analyses: list[dict], *, run_scope: str = "full",
+    ) -> str:
         self._rotate_old_reports()
 
         ext = "txt.enc" if self._enc_key else "txt"
         filename = f"analysis_run{run_id}_{_date_stamp()}.{ext}"
-        path = os.path.join(self.reports_dir, filename)
+        path = os.path.join(self._disk_reports_dir(run_scope), filename)
 
         lines = [
             f"STOCK ANALYSIS REPORT — Run #{run_id}",
@@ -254,7 +305,9 @@ class ReportGenerator:
     def obsidian_enabled(self) -> bool:
         return bool(self.obsidian_vault_dir and self.obsidian_reports_subdir)
 
-    def generate_markdown(self, run_id: int, analyses: list[dict]) -> Optional[str]:
+    def generate_markdown(
+        self, run_id: int, analyses: list[dict], *, run_scope: str = "full",
+    ) -> Optional[str]:
         """
         Write an Obsidian-friendly .md report into the vault (not rotated/deleted).
         Requires OBSIDIAN_VAULT_DIR + OBSIDIAN_REPORTS_SUBDIR (or constructor args).
@@ -262,12 +315,17 @@ class ReportGenerator:
         if not self.obsidian_enabled():
             return None
 
-        dest_dir = os.path.join(self.obsidian_vault_dir, self.obsidian_reports_subdir)
-        os.makedirs(dest_dir, exist_ok=True)
+        dest_dir = self._obsidian_reports_dir(run_scope)
+        if not dest_dir:
+            return None
 
-        stamp = _date_stamp()
         day = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-        filename = f"{day} Analysis Run {run_id}.md"
+        scope_key = self._run_scope_key(run_scope)
+        if scope_key == "single" and len(analyses) == 1:
+            ticker = analyses[0].get("ticker", "position")
+            filename = f"{day} {ticker} Analysis Run {run_id}.md"
+        else:
+            filename = f"{day} Analysis Run {run_id}.md"
         path = os.path.join(dest_dir, filename)
 
         tickers = sorted({a.get("ticker", "") for a in analyses if a.get("ticker")})
@@ -276,6 +334,7 @@ class ReportGenerator:
         lines = [
             "---",
             f"run_id: {run_id}",
+            f"scope: {scope_key}",
             f"generated: {generated}",
             "tags:",
             "  - investment-analysis",
@@ -290,7 +349,7 @@ class ReportGenerator:
             "",
             f"# Stock analysis — run {run_id}",
             "",
-            f"Generated {generated} (UTC).",
+            f"Generated {generated} (UTC). Scope: **{scope_key}**.",
             "",
         ]
 
@@ -361,7 +420,7 @@ class ReportGenerator:
             self._link_in_moc(
                 self.obsidian_default_moc,
                 report_wikilink,
-                section="Analysis runs",
+                section=self._moc_runs_section(run_scope),
             )
 
         logger.info("Obsidian report saved to %s", path)
@@ -534,19 +593,27 @@ class ReportGenerator:
     def _rotate_old_reports(self) -> None:
         cutoff = datetime.now(timezone.utc) - timedelta(days=self.retention_days)
         deleted = 0
-        for fname in os.listdir(self.reports_dir):
-            fpath = os.path.join(self.reports_dir, fname)
-            if not os.path.isfile(fpath):
-                continue
-            mtime = datetime.fromtimestamp(os.path.getmtime(fpath), tz=timezone.utc)
-            if mtime < cutoff:
-                try:
-                    os.remove(fpath)
-                    deleted += 1
-                except OSError as exc:
-                    logger.warning("Could not delete old report %s: %s", fpath, exc)
+        for root, _dirs, files in os.walk(self.reports_dir):
+            for fname in files:
+                fpath = os.path.join(root, fname)
+                if not os.path.isfile(fpath):
+                    continue
+                mtime = datetime.fromtimestamp(
+                    os.path.getmtime(fpath), tz=timezone.utc,
+                )
+                if mtime < cutoff:
+                    try:
+                        os.remove(fpath)
+                        deleted += 1
+                    except OSError as exc:
+                        logger.warning(
+                            "Could not delete old report %s: %s", fpath, exc,
+                        )
         if deleted:
-            logger.info("Rotated %d report(s) older than %d days", deleted, self.retention_days)
+            logger.info(
+                "Rotated %d report(s) older than %d days",
+                deleted, self.retention_days,
+            )
 
     # ── Encryption helpers ─────────────────────────────────────────────────────
 
@@ -572,6 +639,10 @@ class ReportGenerator:
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
+
+def _env_subdir(env_key: str, default: str) -> str:
+    return (os.getenv(env_key, default) or default).strip().strip("/\\")
+
 
 def _date_stamp() -> str:
     return datetime.now(timezone.utc).strftime("%Y%m%d_%H%M")
@@ -603,7 +674,9 @@ tags:
 
 {intro}
 
-## Analysis runs
+## Full Portfolio runs
+
+## Individual Stock runs
 
 ## Knowledge notes
 {related}"""

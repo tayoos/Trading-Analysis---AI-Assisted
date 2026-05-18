@@ -164,7 +164,8 @@ class StockAnalyzer:
             self._error_kind = None
             self._error_message = None
 
-        if len(holdings) == 1:
+        run_scope = "single" if len(holdings) == 1 else "full"
+        if run_scope == "single":
             self._log(f"[{_ts()}] Single-ticker analysis: {holdings[0]['ticker']}")
         else:
             self._log(f"[{_ts()}] Starting analysis for {len(holdings)} holdings")
@@ -210,9 +211,9 @@ class StockAnalyzer:
                 self.db.finish_run(run_id, "done", saved_count)
                 self._log(f"[{_ts()}] Analysis complete.")
                 if generate_reports:
-                    _generate_run_reports(self.db, run_id, self._log)
+                    _generate_run_reports(self.db, run_id, self._log, run_scope)
                 else:
-                    _generate_obsidian_report(self.db, run_id, self._log)
+                    _generate_obsidian_report(self.db, run_id, self._log, run_scope)
                 self._set_status("done")
 
         except Exception as exc:
@@ -377,7 +378,9 @@ def _ts() -> str:
     return datetime.now(timezone.utc).strftime("%H:%M:%S")
 
 
-def _generate_run_reports(db: Database, run_id: int, log_fn) -> None:
+def _generate_run_reports(
+    db: Database, run_id: int, log_fn, run_scope: str = "full",
+) -> None:
     """Write Excel + text + optional Obsidian reports after a successful analysis run."""
     try:
         analyses = db.get_analyses_for_run(run_id)
@@ -386,9 +389,9 @@ def _generate_run_reports(db: Database, run_id: int, log_fn) -> None:
         from .reports import ReportGenerator
 
         gen = ReportGenerator()
-        xlsx = gen.generate_excel(run_id, analyses)
-        txt = gen.generate_text(run_id, analyses)
-        md = gen.generate_markdown(run_id, analyses)
+        xlsx = gen.generate_excel(run_id, analyses, run_scope=run_scope)
+        txt = gen.generate_text(run_id, analyses, run_scope=run_scope)
+        md = gen.generate_markdown(run_id, analyses, run_scope=run_scope)
         parts = [xlsx, txt]
         if md:
             parts.append(md)
@@ -423,7 +426,9 @@ def _persist_knowledge_notes(
         log_fn(f"[{_ts()}] Knowledge note failed: {exc}")
 
 
-def _generate_obsidian_report(db: Database, run_id: int, log_fn) -> None:
+def _generate_obsidian_report(
+    db: Database, run_id: int, log_fn, run_scope: str = "single",
+) -> None:
     """Obsidian-only export (e.g. after a single-ticker ↻ run)."""
     try:
         analyses = db.get_analyses_for_run(run_id)
@@ -434,7 +439,7 @@ def _generate_obsidian_report(db: Database, run_id: int, log_fn) -> None:
         gen = ReportGenerator()
         if not gen.obsidian_enabled():
             return
-        path = gen.generate_markdown(run_id, analyses)
+        path = gen.generate_markdown(run_id, analyses, run_scope=run_scope)
         if path:
             log_fn(f"[{_ts()}] Obsidian report: {path}")
     except Exception as exc:
