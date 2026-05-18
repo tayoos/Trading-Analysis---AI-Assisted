@@ -974,13 +974,13 @@
   {% for card in cards %}
   {% set ticker    = card.ticker %}
   {% set display_name = card.company_name or company_names.get(ticker) or ticker %}
-  {% set price     = card.current_price if card.current_price else none %}
+  {% set price     = card.get('current_price') %}
   {% set has_price = price is not none and price > 0 %}
-  {% set cost      = card.cost_basis or 0 %}
-  {% set shares    = card.shares or 0 %}
-  {% set val       = card.position_value if card.position_value is not none else (price * shares if has_price else none) %}
+  {% set cost      = card.get('cost_basis') or 0 %}
+  {% set shares    = card.get('shares') or 0 %}
+  {% set val       = card.get('position_value') if card.get('position_value') is not none else (price * shares if has_price else none) %}
   {% set has_val   = val is not none and val > 0 %}
-  {% set pnl_abs   = card.unrealized_pnl if card.unrealized_pnl is not none else ((price - cost) * shares if (has_price and cost) else none) %}
+  {% set pnl_abs   = card.get('unrealized_pnl') if card.get('unrealized_pnl') is not none else ((price - cost) * shares if (has_price and cost) else none) %}
   {% set pnl_pct   = ((pnl_abs / (cost * shares)) * 100) if (pnl_abs is not none and cost and shares) else (((price - cost) / cost * 100) if (has_price and cost) else 0) %}
   {% set rec = card.recommendation or 'HOLD' %}
   {% set hn  = handoff_notes.get(ticker) %}
