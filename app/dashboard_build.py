@@ -105,6 +105,11 @@ def build_card(
     card["handoff_note"] = handoff_notes.get(ticker)
     if p.get("instrument_currency"):
         card["instrument_currency"] = p["instrument_currency"]
+    card.setdefault("position_value", None)
+    card.setdefault("unrealized_pnl", None)
+    card.setdefault("current_price", card.get("current_price"))
+    card.setdefault("cost_basis", card.get("cost_basis"))
+    card.setdefault("shares", card.get("shares"))
     return card
 
 
