@@ -6,6 +6,7 @@ subscription rather than a separate API key.
 import asyncio
 import json
 import logging
+import os
 import threading
 from datetime import datetime, timezone
 from typing import Optional
@@ -209,11 +210,12 @@ class StockAnalyzer:
                 self._set_status("error", "quota", quota_message)
             else:
                 self.db.finish_run(run_id, "done", saved_count)
-                self._log(f"[{_ts()}] Analysis complete.")
+                self._log(f"[{_ts()}] Analysis complete — saving reports…")
                 if generate_reports:
                     _generate_run_reports(self.db, run_id, self._log, run_scope)
                 else:
                     _generate_obsidian_report(self.db, run_id, self._log, run_scope)
+                self._log(f"[{_ts()}] All report steps finished.")
                 self._set_status("done")
 
         except Exception as exc:
@@ -378,6 +380,24 @@ def _ts() -> str:
     return datetime.now(timezone.utc).strftime("%H:%M:%S")
 
 
+def _log_obsidian_diagnostics(gen, log_fn, run_scope: str) -> None:
+    for line in gen.obsidian_diagnostic_lines(run_scope):
+        log_fn(f"[{_ts()}] {line}")
+
+
+def _log_obsidian_result(gen, log_fn, path: Optional[str], run_scope: str) -> None:
+    if path:
+        label = gen.obsidian_target_label(run_scope)
+        name = os.path.basename(path)
+        log_fn(
+            f"[{_ts()}] Obsidian: wrote {name} → {label} "
+            f"(container: {path})"
+        )
+        return
+    reason = gen.obsidian_skip_reason() or "unknown error"
+    log_fn(f"[{_ts()}] Obsidian: no .md written — {reason}")
+
+
 def _generate_run_reports(
     db: Database, run_id: int, log_fn, run_scope: str = "full",
 ) -> None:
@@ -385,20 +405,22 @@ def _generate_run_reports(
     try:
         analyses = db.get_analyses_for_run(run_id)
         if not analyses:
+            log_fn(f"[{_ts()}] Reports: skipped — no analyses saved for run {run_id}")
             return
         from .reports import ReportGenerator
 
         gen = ReportGenerator()
+        log_fn(f"[{_ts()}] Writing local reports (Excel + text)…")
         xlsx = gen.generate_excel(run_id, analyses, run_scope=run_scope)
         txt = gen.generate_text(run_id, analyses, run_scope=run_scope)
+        log_fn(f"[{_ts()}] Local reports: {os.path.basename(xlsx)} | {os.path.basename(txt)}")
+
+        _log_obsidian_diagnostics(gen, log_fn, run_scope)
+        if gen.obsidian_enabled():
+            target = gen.obsidian_target_label(run_scope)
+            log_fn(f"[{_ts()}] Writing Obsidian markdown → {target}")
         md = gen.generate_markdown(run_id, analyses, run_scope=run_scope)
-        parts = [xlsx, txt]
-        if md:
-            parts.append(md)
-        else:
-            reason = gen.obsidian_skip_reason() or "Obsidian export disabled"
-            log_fn(f"[{_ts()}] Obsidian: skipped — {reason}")
-        log_fn(f"[{_ts()}] Reports: {' | '.join(parts)}")
+        _log_obsidian_result(gen, log_fn, md, run_scope)
     except Exception as exc:
         logger.exception("Report generation failed for run %s: %s", run_id, exc)
         log_fn(f"[{_ts()}] Report generation failed: {exc}")
@@ -416,14 +438,19 @@ def _persist_knowledge_notes(
         from .reports import ReportGenerator
 
         gen = ReportGenerator()
+        ticker = holding["ticker"]
+        log_fn(
+            f"[{_ts()}] {ticker}: writing {len(knowledge_notes)} knowledge note(s) "
+            f"to {gen.obsidian_knowledge_subdir or '50_Knowledge/notes'}/"
+        )
         paths = gen.write_knowledge_notes(
             run_id,
-            holding["ticker"],
+            ticker,
             knowledge_notes,
             market_ticker=holding.get("market_ticker"),
         )
         for p in paths:
-            log_fn(f"[{_ts()}] Knowledge note: {p}")
+            log_fn(f"[{_ts()}] {ticker}: knowledge note → {p}")
     except Exception as exc:
         logger.exception("Knowledge note write failed for run %s", run_id)
         log_fn(f"[{_ts()}] Knowledge note failed: {exc}")
@@ -436,18 +463,20 @@ def _generate_obsidian_report(
     try:
         analyses = db.get_analyses_for_run(run_id)
         if not analyses:
+            log_fn(f"[{_ts()}] Obsidian: skipped — no analysis saved for this run")
             return
         from .reports import ReportGenerator
 
         gen = ReportGenerator()
-        if not gen.obsidian_enabled():
-            return
+        log_fn(f"[{_ts()}] Saving Obsidian report…")
+        _log_obsidian_diagnostics(gen, log_fn, run_scope)
+        if gen.obsidian_enabled():
+            log_fn(
+                f"[{_ts()}] Writing Obsidian markdown → "
+                f"{gen.obsidian_target_label(run_scope)}"
+            )
         path = gen.generate_markdown(run_id, analyses, run_scope=run_scope)
-        if path:
-            log_fn(f"[{_ts()}] Obsidian report: {path}")
-        else:
-            reason = gen.obsidian_skip_reason() or "Obsidian export disabled"
-            log_fn(f"[{_ts()}] Obsidian: skipped — {reason}")
+        _log_obsidian_result(gen, log_fn, path, run_scope)
     except Exception as exc:
         logger.exception("Obsidian report failed for run %s: %s", run_id, exc)
         log_fn(f"[{_ts()}] Obsidian report failed: {exc}")

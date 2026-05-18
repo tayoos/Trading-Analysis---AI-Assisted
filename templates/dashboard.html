@@ -38,12 +38,13 @@
 
   #log-lines {
     font-family: monospace;
-    font-size: 12px;
+    font-size: 11px;
     color: var(--muted);
     flex: 1;
     overflow: hidden;
-    white-space: nowrap;
-    text-overflow: ellipsis;
+    white-space: pre-line;
+    line-height: 1.45;
+    max-height: 4.5em;
   }
 
   /* ── Key warnings ───────────────────────────────────────────────────── */
@@ -1274,15 +1275,23 @@
         banner.className = 'visible';
         clearAnalysisErrorUi();
         const lines = d.progress || [];
-        logEl.textContent = lines.length ? lines[lines.length - 1] : 'Running…';
+        const tail = lines.slice(-5);
+        logEl.textContent = tail.length ? tail.join('\n') : 'Running…';
         setAnalysisButtonsDisabled(true);
         const current = parseAnalysingTicker(d);
         updateAnalysingHighlight(current);
-        navEl.textContent = current
-          ? `Analysing ${current}…`
-          : 'Analysis running…';
+        const last = lines[lines.length - 1] || '';
+        if (/Writing Obsidian|Obsidian: wrote|Obsidian: no|Saving Obsidian|Saving reports/i.test(last)) {
+          navEl.textContent = 'Writing reports…';
+        } else if (/Writing local reports|Local reports:/i.test(last)) {
+          navEl.textContent = 'Saving Excel/text…';
+        } else {
+          navEl.textContent = current
+            ? `Analysing ${current}…`
+            : 'Analysis running…';
+        }
         if (!polling) polling = true;
-        setTimeout(pollStatus, 2000);
+        setTimeout(pollStatus, 1500);
       } else if (d.status === 'error') {
         setAnalysisButtonsDisabled(false);
         updateAnalysingHighlight(null);
@@ -1291,16 +1300,26 @@
           polling = false;
         }
       } else {
-        banner.className = '';
         setAnalysisButtonsDisabled(false);
         updateAnalysingHighlight(null);
         clearAnalysisErrorUi();
-        navEl.textContent = d.status === 'done' ? 'Last run complete ✓' : '';
         if (polling && d.status === 'done') {
           polling = false;
-          location.reload();
-        } else if (polling) {
-          polling = false;
+          const lines = d.progress || [];
+          const tail = lines.slice(-6);
+          const obsLine = [...lines].reverse().find(l =>
+            /Obsidian: wrote|Obsidian: no|Obsidian: off|Obsidian report failed/i.test(l)
+          );
+          banner.className = 'visible';
+          logEl.textContent = tail.length ? tail.join('\n') : 'Complete.';
+          navEl.textContent = obsLine
+            ? (obsLine.includes('wrote') ? 'Obsidian report saved ✓' : 'Obsidian export issue — see log')
+            : 'Last run complete ✓';
+          setTimeout(() => location.reload(), obsLine ? 5000 : 2500);
+        } else {
+          banner.className = '';
+          navEl.textContent = d.status === 'done' ? 'Last run complete ✓' : '';
+          if (polling) polling = false;
         }
       }
     } catch(e) {

@@ -399,6 +399,40 @@ class ReportGenerator:
             return "OBSIDIAN_REPORTS_SUBDIR is empty"
         return None
 
+    def obsidian_target_dir(self, run_scope: str = "full") -> str:
+        """Full container path where the next .md report would be written."""
+        if not self.obsidian_enabled():
+            return ""
+        return self._obsidian_reports_dir(run_scope)
+
+    def obsidian_target_label(self, run_scope: str = "full") -> str:
+        """Vault-relative folder for UI logs (easier to find in Obsidian)."""
+        scope = self._run_scope_key(run_scope)
+        sub = (
+            self.obsidian_single_subdir if scope == "single"
+            else self.obsidian_full_subdir
+        )
+        base = self.obsidian_reports_subdir
+        if base and sub:
+            return f"{base}/{sub}/"
+        return "(reports folder not configured)"
+
+    def obsidian_diagnostic_lines(self, run_scope: str = "full") -> list[str]:
+        """Short lines for run log / app.log when exporting reports."""
+        lines: list[str] = []
+        if not self.obsidian_enabled():
+            reason = self.obsidian_skip_reason() or "Obsidian export disabled"
+            lines.append(f"Obsidian: off — {reason}")
+            return lines
+        vault = self.obsidian_vault_dir or ""
+        auto = " (auto-detected)" if getattr(self, "_obsidian_vault_auto", False) else ""
+        lines.append(f"Obsidian vault: {vault}{auto}")
+        lines.append(f"Obsidian reports → {self.obsidian_target_label(run_scope)}")
+        if self.obsidian_knowledge_active():
+            kn = self.obsidian_knowledge_subdir or ""
+            lines.append(f"Obsidian knowledge → {kn}/")
+        return lines
+
     def generate_markdown(
         self, run_id: int, analyses: list[dict], *, run_scope: str = "full",
     ) -> Optional[str]:
@@ -413,6 +447,10 @@ class ReportGenerator:
 
         dest_dir = self._obsidian_reports_dir(run_scope)
         if not dest_dir:
+            logger.warning(
+                "Obsidian markdown skipped: could not resolve folder for scope=%s",
+                run_scope,
+            )
             return None
 
         day = datetime.now(timezone.utc).strftime("%Y-%m-%d")
@@ -508,18 +546,27 @@ class ReportGenerator:
             lines.append("---")
             lines.append("")
 
+        logger.info(
+            "Writing Obsidian report run_id=%s → %s",
+            run_id, path,
+        )
         with open(path, "w", encoding="utf-8") as f:
             f.write("\n".join(lines).rstrip() + "\n")
 
         if self.obsidian_moc_active():
             report_wikilink = filename.removesuffix(".md")
+            logger.info(
+                "Linking Obsidian report in MOC %s (%s)",
+                self.obsidian_default_moc,
+                self._moc_runs_section(run_scope),
+            )
             self._link_in_moc(
                 self.obsidian_default_moc,
                 report_wikilink,
                 section=self._moc_runs_section(run_scope),
             )
 
-        logger.info("Obsidian report saved to %s", path)
+        logger.info("Obsidian report saved: %s", path)
         return path
 
     def write_knowledge_notes(
