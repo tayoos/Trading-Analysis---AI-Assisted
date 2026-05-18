@@ -9,21 +9,61 @@ created: 2026-05-18
 
 # Stock Analyser — User Guide
 
-This document describes how the **Stock Analyser** Docker app works, how to deploy it on **Unraid** or **Proxmox**, and how it connects to your **Obsidian** vault. Copy this file into your vault (for example `Home/Apps/Stock Analyser.md`) and keep it updated when you change container settings.
+How the **Stock Analyser** Docker app works, how to deploy it on **Unraid** or **Proxmox**, and how it connects to your **Obsidian** vault.
 
-The app repository is: [Trading-Analysis---AI-Assisted](https://github.com/tayoos/Trading-Analysis---AI-Assisted)
+Copy this file into your vault (e.g. `Home/Apps/Stock Analyser.md`) and adjust host paths to match your server.
+
+Repository: [Trading-Analysis---AI-Assisted](https://github.com/tayoos/Trading-Analysis---AI-Assisted)
 
 ---
 
 ## What it does
 
-- Syncs open positions from **Trading 212** (or reads `stocks.xlsx` as a fallback).
-- Fetches live market data via **yfinance** (with ticker resolution when T212 uses legacy codes).
-- Runs **Claude** (via your subscription — `claude login` in the container) to produce structured recommendations per holding.
-- Shows results on a web dashboard (port **8765**).
-- Writes optional **reports** (Excel, text) and **Obsidian** notes into your vault.
+- Syncs open positions from **Trading 212** (or `stocks.xlsx` as fallback).
+- Fetches live market data via **yfinance** (resolves legacy T212 tickers, e.g. SOAC → TMC).
+- Runs **Claude** (`claude login` in the container) for structured recommendations per holding.
+- Dashboard on port **8765**.
+- Writes **Excel/text** reports, **Obsidian** run notes, optional **knowledge notes**, and **MOC** links.
 
-It does **not** place trades. It is analysis and record-keeping only.
+It does **not** place trades.
+
+---
+
+## Report folders at a glance
+
+```text
+/data/reports/                          (container — not in Obsidian)
+├── full/                               ← Run Analysis (Excel + text)
+└── single/                             ← reserved (↻ does not write Excel/text)
+
+10_Personal/13_Finances/AI Investment Analysis/   (Obsidian)
+├── Full Portfolio/                     ← Run Analysis (.md)
+│   └── 2026-05-18 Analysis Run 42.md
+└── Individual Stock/                   ← ↻ per-card (.md)
+    └── 2026-05-18 SOAC Analysis Run 43.md
+
+50_Knowledge/
+├── notes/                              ← atomic notes (sometimes)
+└── _moc/
+    └── MOC-investment-analysis.md      ← index (auto-created)
+```
+
+---
+
+## When is a report created?
+
+| Trigger | Creates |
+|---------|---------|
+| **Run Analysis** (full portfolio) | Excel + text in `/data/reports/full/`, Obsidian `.md` in **Full Portfolio/**, MOC link |
+| **↻** on a card (one ticker/pie) | Obsidian `.md` in **Individual Stock/**, MOC link only |
+| **Sync T212** | Nothing |
+| **Scheduled** run (Mon/Wed/Sat default) | Same as full **Run Analysis** (after sync if enabled) |
+
+Reports are written **when the run finishes successfully**, not per ticker mid-run.
+
+**Knowledge notes** (`50_Knowledge/notes/`) are written **during** the run, only when Claude returns non-empty `knowledge_notes` (uncommon).
+
+Only **one** analysis (full or single) can run at a time.
 
 ---
 
@@ -31,103 +71,166 @@ It does **not** place trades. It is analysis and record-keeping only.
 
 ```mermaid
 flowchart LR
-  subgraph unraid [Unraid / Proxmox host]
+  subgraph host [Unraid / Proxmox]
     T212[Trading 212 API]
-    Vault[Obsidian vault on disk]
-    AppData[/data appdata]
+    Vault[Obsidian vault]
+    AppData[stock-analyzer appdata]
   end
 
-  subgraph container [Stock Analyser container]
+  subgraph container [Stock Analyser]
     Web[Dashboard :8765]
     DB[(SQLite)]
     Claude[Claude Agent SDK]
     Reports[/data/reports]
-    ObsidianMount[/obsidian]
+    ObsMount[/obsidian]
   end
 
   T212 --> AppData
   AppData --> DB
-  Vault --> ObsidianMount
+  Vault --> ObsMount
   Web --> Claude
   Claude --> DB
   Claude --> Reports
-  Claude --> ObsidianMount
+  Claude --> ObsMount
 ```
 
 ---
 
-## Storage map (one vault mount, two purposes)
-
-When Obsidian is enabled you mount the **vault root** once. The app writes to different folders inside it.
+## Docker paths
 
 | Container path | Host (example Unraid) | Purpose |
 |----------------|------------------------|---------|
-| `/data` | `/mnt/user/appdata/stock-analyzer` | SQLite DB, Excel/text reports, logs, backups |
-| `/obsidian` | `/mnt/user/appdata/obsidian/MyVault` | Your full Obsidian vault (read/write) |
-| `/home/appuser/.claude` | `.../stock-analyzer/claude-auth` | Claude login session |
+| `/data` | `/mnt/user/appdata/stock-analyzer` | DB, `/data/reports`, logs |
+| `/obsidian` | `/mnt/user/appdata/obsidian/MyVault` | **Vault root** (contains `10_Personal`, `50_Knowledge`, …) |
+| `/home/appuser/.claude` | `.../stock-analyzer/claude-auth` | Claude session |
 
-Inside the vault the app uses:
+Mount the **vault root**, not `AI Investment Analysis` or `50_Knowledge` alone.
 
-| Vault path | Written by app? | Contents |
-|------------|-----------------|----------|
-| `10_Personal/13_Finances/AI Investment Analysis/` | Yes — every successful run | Dated run reports: `2026-05-18 Analysis Run 42.md` |
-| `50_Knowledge/notes/` | Sometimes | Atomic notes when Claude flags durable insight |
-| `50_Knowledge/_moc/` | Yes — create/link | `MOC-investment-analysis.md` + topic MOCs when suggested |
-| `50_Knowledge/compiled/` | No | Your/other agents’ compilations |
-| Rest of vault | No | Other agents (e.g. homelab, SysML) — untouched |
+---
 
-You do **not** need a separate Docker path for `50_Knowledge` or `AI Investment Analysis` — only the vault root.
+## Vault output map
+
+| Path | When | Contents |
+|------|------|----------|
+| `…/AI Investment Analysis/Full Portfolio/` | Every successful **Run Analysis** | `YYYY-MM-DD Analysis Run {id}.md` |
+| `…/AI Investment Analysis/Individual Stock/` | Every successful **↻** run | `YYYY-MM-DD {TICKER} Analysis Run {id}.md` |
+| `50_Knowledge/notes/` | Sometimes | `YYYYMMDDHHMMSS-{slug}.md` |
+| `50_Knowledge/_moc/` | Create/link on reports & knowledge | `MOC-investment-analysis.md`, topic MOCs |
+| `50_Knowledge/compiled/` | Never (this app) | Other agents |
+| Rest of vault | Never (this app) | Other Claude agents, your notes |
+
+---
+
+## Dashboard controls
+
+| Control | Claude calls | Disk reports | Obsidian |
+|---------|--------------|--------------|----------|
+| **Run Analysis** | One per holding + pies | Excel + text → `reports/full/` | `.md` → **Full Portfolio/** |
+| **↻** on card | One | None | `.md` → **Individual Stock/** |
+| **Sync T212** | None | None | None |
+
+Hint on dashboard: *↻ on a card analyses that position only.*
+
+---
+
+## Analysis pipeline (per holding)
+
+1. **Resolve market ticker** — e.g. T212 `SOAC` → yfinance `TMC` when wallet price matches.
+2. **Fetch yfinance** — price, P/E, news, analyst targets, earnings.
+3. **T212 price** — used for position valuation when available.
+4. **Handoff memory** — prior thesis; stale “worthless / $0” notes skipped if T212 shows a live price.
+5. **Claude** — recommendation, reasoning, catalysts, risks, `handoff_note`, optional `knowledge_notes`.
+6. **Knowledge notes** — if any, written to `50_Knowledge/notes/` and linked in MOCs.
+7. **SQLite** — analysis row + handoff for next run.
+
+---
+
+## MOC-investment-analysis
+
+Auto-created at `50_Knowledge/_moc/MOC-investment-analysis.md` if missing.
+
+| Section | Linked from |
+|---------|-------------|
+| **## Full Portfolio runs** | Full **Run Analysis** `.md` files |
+| **## Individual Stock runs** | **↻** run `.md` files |
+| **## Knowledge notes** | Atomic notes in `50_Knowledge/notes/` |
+
+Topic MOCs (e.g. `MOC-uk-reits`) are created/linked only when Claude lists them on a **knowledge note**, not on run reports.
+
+Each run report `.md` includes frontmatter `moc: '[[MOC-investment-analysis]]'`.
+
+---
+
+## Knowledge notes (selective)
+
+Claude returns `knowledge_notes: []` on most runs.
+
+**Written when** insight is durable and reusable, e.g.:
+
+- T212 code vs market symbol mapping
+- Sector/framework insight beyond one trade
+- Material thesis change or correcting a misconception
+
+**Not written for** routine recs, targets-only, or P&L summaries.
+
+**MOCs:** always `MOC-investment-analysis`; plus any extra `mocs` Claude suggests (e.g. `MOC-uk-reits`). Same `slug` updates the existing note file.
+
+---
+
+## T212 legacy tickers (SOAC / TMC)
+
+| UI | Meaning |
+|----|---------|
+| Company name as title | From T212 / yfinance |
+| `SOAC · quotes TMC` | DB key `SOAC`; quotes/analysis data use `TMC` |
+
+Stale “SOAC worthless $0” on a card → **Sync T212**, then **↻** on that card after deploying the latest image.
 
 ---
 
 ## Unraid setup
 
-### Required container paths
+### Paths (Add Container)
 
-| Name | Container path | Host path (adjust yours) |
-|------|----------------|---------------------------|
+| Name | Container | Host |
+|------|-----------|------|
 | Data directory | `/data` | `/mnt/user/appdata/stock-analyzer` |
-| Claude credentials | `/home/appuser/.claude` | `/mnt/user/appdata/stock-analyzer/claude-auth` |
-| Obsidian vault (optional) | `/obsidian` | `/mnt/user/appdata/obsidian/MyVault` |
+| Claude credentials | `/home/appuser/.claude` | `.../stock-analyzer/claude-auth` |
+| Obsidian vault | `/obsidian` | `/mnt/user/appdata/obsidian/MyVault` |
 
-`MyVault` must be the folder that **contains** `10_Personal/`, `50_Knowledge/`, etc. — not a subfolder inside them.
+### Environment (minimum)
 
-Backups (optional): map a host folder to `/backups` or use `/data/backups` on the array.
+`TRADING212_API_KEY`, `TRADING212_API_SECRET`, `DASHBOARD_USER`, `DASHBOARD_PASSWORD`, `TZ`
 
-### Required environment variables
+### Obsidian environment
 
-| Variable | Example | Purpose |
-|----------|---------|---------|
-| `TRADING212_API_KEY` | (secret) | T212 API |
-| `TRADING212_API_SECRET` | (secret) | T212 API |
-| `DASHBOARD_USER` | `admin` | Basic auth |
-| `DASHBOARD_PASSWORD` | (secret) | Basic auth |
-| `TZ` | `Europe/London` | Schedule + display timezone |
+| Variable | Default |
+|----------|---------|
+| `OBSIDIAN_VAULT_DIR` | `/obsidian` |
+| `OBSIDIAN_REPORTS_SUBDIR` | `10_Personal/13_Finances/AI Investment Analysis` |
+| `OBSIDIAN_REPORTS_FULL_SUBDIR` | `Full Portfolio` |
+| `OBSIDIAN_REPORTS_SINGLE_SUBDIR` | `Individual Stock` |
+| `REPORTS_FULL_SUBDIR` | `full` |
+| `REPORTS_SINGLE_SUBDIR` | `single` |
+| `OBSIDIAN_KNOWLEDGE_ENABLED` | `true` |
+| `OBSIDIAN_KNOWLEDGE_SUBDIR` | `50_Knowledge/notes` |
+| `OBSIDIAN_KNOWLEDGE_MOC_DIR` | `50_Knowledge/_moc` |
+| `OBSIDIAN_DEFAULT_MOC` | `MOC-investment-analysis` |
 
-### Obsidian environment variables
+Set `OBSIDIAN_KNOWLEDGE_ENABLED=false` to disable `50_Knowledge/notes` only (run reports still work).
 
-| Variable | Default | Purpose |
-|----------|---------|---------|
-| `OBSIDIAN_VAULT_DIR` | `/obsidian` | Must match container mount |
-| `OBSIDIAN_REPORTS_SUBDIR` | `10_Personal/13_Finances/AI Investment Analysis` | Run report folder |
-| `OBSIDIAN_KNOWLEDGE_ENABLED` | `true` | Allow atomic knowledge notes |
-| `OBSIDIAN_KNOWLEDGE_SUBDIR` | `50_Knowledge/notes` | Atomic notes folder |
-| `OBSIDIAN_KNOWLEDGE_MOC_DIR` | `50_Knowledge/_moc` | MOC index folder |
-| `OBSIDIAN_DEFAULT_MOC` | `MOC-investment-analysis` | Primary MOC (auto-created) |
+### First run
 
-Set `OBSIDIAN_KNOWLEDGE_ENABLED=false` if you only want run reports, not `50_Knowledge/notes`.
+1. Deploy / update container image.
+2. `docker exec -it StockAnalyzer claude login`
+3. Dashboard → **Sync T212**
+4. **Run Analysis** or **↻** on one card
 
-### First-time steps
-
-1. Pull/create container from template or `docker-compose.unraid.yml`.
-2. `docker exec -it StockAnalyzer claude login` (or `stock-analyzer` — match container name).
-3. Open dashboard → **Sync T212**.
-4. **Run Analysis** or use **↻** on a single card.
-
-### Verify Obsidian mount
+### Verify
 
 ```bash
-docker exec -it StockAnalyzer ls "/obsidian/10_Personal/13_Finances/AI Investment Analysis"
+docker exec -it StockAnalyzer ls "/obsidian/10_Personal/13_Finances/AI Investment Analysis/Full Portfolio"
+docker exec -it StockAnalyzer ls "/obsidian/10_Personal/13_Finances/AI Investment Analysis/Individual Stock"
 docker exec -it StockAnalyzer ls "/obsidian/50_Knowledge/_moc"
 ```
 
@@ -135,7 +238,7 @@ docker exec -it StockAnalyzer ls "/obsidian/50_Knowledge/_moc"
 
 ## Proxmox setup
 
-Use `docker-compose.proxmox.yml`. Bind-mount fast storage into the LXC, then set in `.env`:
+Use `docker-compose.proxmox.yml`. Example `.env`:
 
 ```bash
 PRIMARY_DATA_PATH=/opt/stock-analyzer
@@ -143,239 +246,88 @@ BACKUP_HOST_PATH=/mnt/backups/stock-analyzer
 OBSIDIAN_VAULT_HOST_PATH=/mnt/obsidian/MyVault
 OBSIDIAN_VAULT_DIR=/obsidian
 OBSIDIAN_REPORTS_SUBDIR=10_Personal/13_Finances/AI Investment Analysis
+OBSIDIAN_REPORTS_FULL_SUBDIR=Full Portfolio
+OBSIDIAN_REPORTS_SINGLE_SUBDIR=Individual Stock
+REPORTS_FULL_SUBDIR=full
+REPORTS_SINGLE_SUBDIR=single
 OBSIDIAN_KNOWLEDGE_ENABLED=true
 OBSIDIAN_KNOWLEDGE_SUBDIR=50_Knowledge/notes
 OBSIDIAN_KNOWLEDGE_MOC_DIR=50_Knowledge/_moc
 OBSIDIAN_DEFAULT_MOC=MOC-investment-analysis
 ```
 
-LXC config example (paths are examples):
+---
 
-```
-mp0: /path/on/host/stock-analyzer,mp=/opt/stock-analyzer
-mp1: /path/on/host/MyVault,mp=/mnt/obsidian/MyVault
-```
+## Handoff memory
+
+Stored in SQLite (`handoff_notes`), not as separate Obsidian files. Feeds the next run for that ticker unless stale.
 
 ---
 
-## Dashboard controls
+## Schedule
 
-| Control | Action | Claude calls | Reports |
-|---------|--------|--------------|---------|
-| **Run Analysis** | All positions + pies | One per holding | Excel + text + Obsidian run `.md` |
-| **↻** on a card | That ticker/pie only | One | Obsidian run `.md` only (no Excel/text) |
-| **Sync T212** | Refresh positions/prices | None | None |
-| Scheduled run (Mon/Wed/Sat default) | Sync (if enabled) + full analysis | Same as full run | Same as full run |
-
-Only one analysis can run at a time (full or single).
-
----
-
-## What happens when you run analysis
-
-### Per holding (stocks and pies)
-
-1. **Resolve market ticker** — T212 code (e.g. `SOAC`) may map to yfinance symbol (e.g. `TMC`) by matching wallet price to public quotes.
-2. **Fetch market data** — price, P/E, news headlines, analyst targets, earnings date.
-3. **Merge T212 price** — position valuation uses Trading 212 wallet price when available.
-4. **Load handoff memory** — short thesis from last run; stale “worthless / $0” memory is dropped if T212 shows a live price.
-5. **Claude analysis** — JSON: recommendation, reasoning, catalysts, risks, outlook, handoff for next run.
-6. **Knowledge notes** (optional) — if Claude returns non-empty `knowledge_notes`, write atomic `.md` files and update MOCs.
-7. **Save to SQLite** — latest analysis per ticker; handoff note updated.
-
-### When the full run finishes
-
-| Output | Location |
-|--------|----------|
-| Dashboard cards | Updated after page reload |
-| Database | `/data/db/stocks.db` — run history + per-ticker analysis |
-| Excel report | `/data/reports/analysis_run{id}_{timestamp}.xlsx` |
-| Text report | `/data/reports/analysis_run{id}_{timestamp}.txt` |
-| Obsidian run note | `{OBSIDIAN_REPORTS_SUBDIR}/{date} Analysis Run {id}.md` |
-| MOC link | `50_Knowledge/_moc/MOC-investment-analysis.md` → **## Analysis runs** |
-
-Old files in `/data/reports` may be deleted after `REPORTS_RETENTION_DAYS` (default 365). Obsidian files are **never** auto-deleted.
-
-### Single-card (↻) run
-
-Same per-holding steps, but only one ticker. At the end:
-
-- Obsidian run `.md` (that holding only).
-- MOC link for that run.
-- Knowledge notes if Claude included them.
-- **No** Excel/text in `/data/reports`.
-
----
-
-## T212 ticker vs market symbol (e.g. SOAC / TMC)
-
-Trading 212 may keep a **legacy instrument code** after a SPAC rename or merger.
-
-| UI label | Meaning |
+| Variable | Default |
 |----------|---------|
-| Card title | Company name from T212 / yfinance |
-| `SOAC · quotes TMC` | DB key is `SOAC`; live quotes use `TMC` |
-
-Analysis should use **TMC** fundamentals with **T212** position prices. If the card still shows old “SOAC worthless $0” text, run **↻** on that card after deploying ticker-resolution fixes and syncing.
-
----
-
-## Obsidian: three types of output
-
-### 1. Run reports (every successful run)
-
-- **Folder:** `10_Personal/13_Finances/AI Investment Analysis`
-- **Filename:** `YYYY-MM-DD Analysis Run {run_id}.md`
-- **MOC:** Always linked under **## Analysis runs** on `MOC-investment-analysis`
-- **Frontmatter:** `run_id`, `generated`, `tickers`, tags, link to default MOC
-
-Contains one `## TICKER` section per holding in that run with thesis, news, catalysts, risks.
-
-### 2. Knowledge notes (only when Claude adds them)
-
-- **Folder:** `50_Knowledge/notes`
-- **Filename:** `YYYYMMDDHHMMSS-{slug}.md` (updates existing file if same `slug`)
-- **When:** Claude returns non-empty `knowledge_notes` — selective, not every run
-
-**Typical reasons for a knowledge note:**
-
-- Ticker mapping (T212 code vs market symbol)
-- Durable sector/framework insight
-- Material thesis change worth remembering
-- Correcting a prior misconception
-
-**Not written for:** routine HOLD/BUY recaps, price targets only, P&L summaries.
-
-**MOC linking for knowledge notes:**
-
-- Always: `MOC-investment-analysis` → **## Knowledge notes**
-- Additionally: any MOC Claude lists (e.g. `MOC-uk-reits`) — file created if missing
-
-### 3. MOC files (index)
-
-- **Folder:** `50_Knowledge/_moc`
-- **Default:** `MOC-investment-analysis.md` (auto-created with **Analysis runs** and **Knowledge notes** sections)
-- **Topic MOCs:** Created/updated only when Claude names them on a knowledge note
-
-Run reports are **not** auto-linked to topic MOCs like `MOC-uk-reits` — only to `MOC-investment-analysis`.
+| `SCHEDULE_ENABLED` | `true` |
+| `SCHEDULE_DAYS` | `0,2,5` (Mon, Wed, Sat) |
+| `SCHEDULE_HOUR` | `3` |
+| `T212_SYNC_ENABLED` | `true` |
 
 ---
 
-## Handoff memory (between runs)
+## Security
 
-Stored in SQLite per ticker (`handoff_notes` table), not as separate Obsidian files.
-
-Includes: thesis one-liner, watch items, trend flags, ongoing risks/catalysts.
-
-Used on the **next** analysis for that ticker unless marked stale (e.g. “worthless” while T212 shows a positive price).
-
----
-
-## Schedule and sync
-
-| Setting | Default | Meaning |
-|---------|---------|---------|
-| `SCHEDULE_ENABLED` | `true` | Automatic runs |
-| `SCHEDULE_DAYS` | `0,2,5` | Mon, Wed, Sat |
-| `SCHEDULE_HOUR` | `3` | Hour in `TZ` |
-| `T212_SYNC_ENABLED` | `true` | Sync before scheduled analysis |
-
-Manual **Sync T212** and **Run Analysis** always work regardless of schedule.
-
----
-
-## Security notes
-
-| Setting | Effect |
-|---------|--------|
-| `DASHBOARD_USER` / `DASHBOARD_PASSWORD` | Basic auth on dashboard |
-| `TRUSTED_NETWORKS` | IPs that skip basic auth (e.g. behind Authelia) |
-| `REPORTS_ENCRYPTION_KEY` | Password-protects Excel; encrypts `.txt` reports |
-
-Use a strong dashboard password. Obsidian vault on the host should have normal file permissions (only your user/containers that need access).
+`DASHBOARD_USER` / `DASHBOARD_PASSWORD`, `TRUSTED_NETWORKS` (proxy bypass), optional `REPORTS_ENCRYPTION_KEY` for Excel/text.
 
 ---
 
 ## Troubleshooting
 
-| Symptom | Likely cause | Fix |
-|---------|--------------|-----|
-| No `.md` in Obsidian | Old image, or vault not mounted | Deploy latest image; check `/obsidian` mount + env vars |
-| `ls /obsidian/...` fails | Wrong host path (not vault root) | Mount folder containing `10_Personal` and `50_Knowledge` |
-| Still “SOAC $0” on card | Stale analysis in DB | Sync T212 → **↻** on card |
-| `SOAC · quotes TMC` but wrong analysis | Expected until re-analysed | **↻** after sync |
-| No knowledge notes | Normal — most runs return `[]` | Only when Claude flags durable insight |
-| No `MOC-uk-reits` link | Claude didn’t list it on a knowledge note | Add `mocs` in prompt output or link manually |
-| Analysis already running | Overlap | Wait for current run to finish |
-| Quota / auth error | Claude limits or not logged in | `docker exec -it … claude login`; wait for quota |
-| Watchtower didn’t add Obsidian path | Watchtower only updates image | Edit container once to add path + env |
+| Symptom | Fix |
+|---------|-----|
+| No Obsidian `.md` | Update image; check `/obsidian` mount + `OBSIDIAN_VAULT_DIR` |
+| Wrong folder names | Set `OBSIDIAN_REPORTS_FULL_SUBDIR` / `OBSIDIAN_REPORTS_SINGLE_SUBDIR` or rename folders in Obsidian |
+| Old reports in parent folder | Legacy; new runs use **Full Portfolio/** and **Individual Stock/** |
+| Stale SOAC analysis | Sync → **↻** |
+| No knowledge notes | Normal (most runs use `[]`) |
+| No topic MOC link | Claude must list `mocs` on a knowledge note |
+| Analysis already running | Wait for current run |
+| Claude auth / quota | `claude login`; check subscription limits |
+| Watchtower missing Obsidian path | Edit container once (Watchtower only swaps image) |
 
 ---
 
-## Environment variable reference (complete)
+## Full environment reference
 
 ### Core
 
-| Variable | Default |
-|----------|---------|
-| `DB_PATH` | `/data/db/stocks.db` |
-| `REPORTS_DIR` | `/data/reports` |
-| `EXCEL_PATH` | `/data/stocks/stocks.xlsx` |
-| `LOG_DIR` | `/data/logs` |
-| `PORT` | `8765` |
-| `COST_METHOD` | `AVCO` |
+`DB_PATH`, `REPORTS_DIR`, `EXCEL_PATH`, `LOG_DIR`, `PORT`, `COST_METHOD`, `REPORTS_RETENTION_DAYS`, `REPORTS_ENCRYPTION_KEY`
 
-### Reports
+### Obsidian (see table above)
 
-| Variable | Default |
-|----------|---------|
-| `REPORTS_ENCRYPTION_KEY` | (empty) |
-| `REPORTS_RETENTION_DAYS` | `365` |
+### Compose host only
 
-### Obsidian
-
-| Variable | Default |
-|----------|---------|
-| `OBSIDIAN_VAULT_DIR` | (empty — disabled) |
-| `OBSIDIAN_REPORTS_SUBDIR` | `10_Personal/13_Finances/AI Investment Analysis` |
-| `OBSIDIAN_KNOWLEDGE_ENABLED` | `true` |
-| `OBSIDIAN_KNOWLEDGE_SUBDIR` | `50_Knowledge/notes` |
-| `OBSIDIAN_KNOWLEDGE_MOC_DIR` | `50_Knowledge/_moc` |
-| `OBSIDIAN_DEFAULT_MOC` | `MOC-investment-analysis` |
-
-### Compose host paths (not inside container)
-
-| Variable | Used by |
-|----------|---------|
-| `ZFS_APPDATA_PATH` | `docker-compose.unraid.yml` |
-| `OBSIDIAN_VAULT_HOST_PATH` | Unraid/Proxmox compose |
-| `PRIMARY_DATA_PATH` | Proxmox compose |
-| `BACKUP_HOST_PATH` | Proxmox compose |
+`ZFS_APPDATA_PATH`, `OBSIDIAN_VAULT_HOST_PATH`, `PRIMARY_DATA_PATH`, `BACKUP_HOST_PATH`
 
 ---
 
-## Suggested place in your vault
-
-Copy this file to something like:
+## Place in your vault
 
 ```text
 Home/
   Apps/
-    Stock Analyser.md    ← this guide
+    Stock Analyser.md
 ```
 
-Link it from a homelab or finance MOC if you use one, e.g. `[[Stock Analyser]]` under `MOC-homelab` or `MOC-investment-analysis`.
+Link from `[[MOC-homelab]]` or `[[MOC-investment-analysis]]`.
+
+### Generated links to expect
+
+- `[[MOC-investment-analysis]]`
+- `10_Personal/13_Finances/AI Investment Analysis/Full Portfolio/`
+- `10_Personal/13_Finances/AI Investment Analysis/Individual Stock/`
+- `50_Knowledge/notes/` (when created)
 
 ---
 
-## Related notes in this vault
-
-After the app runs, you will see generated content here (not shipped with the repo):
-
-- `[[MOC-investment-analysis]]` — index of runs and knowledge notes
-- `10_Personal/13_Finances/AI Investment Analysis/` — dated run reports
-- `50_Knowledge/notes/` — atomic notes from the analyser (when created)
-
----
-
-*Last updated for features: per-card ↻ analysis, Obsidian run reports, knowledge notes, auto MOC create/link.*
+*Guide version: per-card ↻, Full Portfolio / Individual Stock report folders, knowledge notes, auto MOC create/link, ticker resolution.*
