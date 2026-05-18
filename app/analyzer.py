@@ -15,6 +15,7 @@ import yfinance as yf
 from claude_agent_sdk import ClaudeAgentOptions, ResultMessage, query
 
 from .analysis_errors import AnalysisQuotaError, classify_analysis_error
+from .currency import enrich_position_currencies, format_money, normalize_currency
 from .database import Database
 from .prices import _ticker_candidates
 from .ticker_resolve import resolve_market_ticker
@@ -85,7 +86,8 @@ Guidelines:
 - trend_flags: note if your recommendation differs from the previous run (e.g. "HOLD_LONG→SELL").
 - watch_items: be specific and actionable — include earnings dates, product launches, macro events.
 - Use fundamentals (P/E vs sector, EPS growth, analyst consensus) alongside price action.
-- All prices in the position's native currency."""
+- Trading 212 position figures (avg cost, current price, value, P&L) are in the ACCOUNT currency (e.g. GBP).
+- yfinance / analyst targets may be in the LISTING currency (e.g. USD) — label them clearly; never mix currencies in one comparison without stating both."""
 
 
 class StockAnalyzer:
@@ -157,6 +159,7 @@ class StockAnalyzer:
             raise RuntimeError("Analysis already in progress")
 
         run_id = self.db.create_run()
+        account_currency = self.db.get_account_currency()
         with self._lock:
             self._run_id = run_id
             self._status = "running"
@@ -180,7 +183,8 @@ class StockAnalyzer:
                 self._set_current_ticker(ticker)
                 try:
                     self._log(f"[{_ts()}] Analysing {ticker}…")
-                    result = self._analyse_ticker(holding)
+                    enrich_position_currencies(holding, account_currency)
+                    result = self._analyse_ticker(holding, account_currency)
                     _persist_knowledge_notes(
                         run_id, holding, result.pop("knowledge_notes", None), self._log,
                     )
@@ -230,8 +234,9 @@ class StockAnalyzer:
 
     # ── Per-ticker analysis ────────────────────────────────────────────────────
 
-    def _analyse_ticker(self, holding: dict) -> dict:
+    def _analyse_ticker(self, holding: dict, account_currency: str) -> dict:
         ticker = holding["ticker"]
+        acct_ccy = normalize_currency(account_currency)
 
         if holding.get("is_pie"):
             self._log(f"[{_ts()}] {ticker}: pie portfolio — aggregated analysis")
@@ -252,6 +257,9 @@ class StockAnalyzer:
             market_data["t212_ticker"] = ticker
             market_data["market_ticker"] = market_ticker
             _merge_t212_price(holding, market_data)
+            if market_data.get("quote_currency"):
+                holding["quote_currency"] = market_data["quote_currency"]
+                enrich_position_currencies(holding, acct_ccy, quote_currency=holding["quote_currency"])
 
         price = market_data.get("current_price")
         pe = market_data.get("pe_ratio")
@@ -260,8 +268,8 @@ class StockAnalyzer:
         earnings = market_data.get("next_earnings")
         eps_g = market_data.get("eps_growth_pct")
         self._log(
-            f"[{_ts()}] {ticker}: price={price}  P/E={pe}  "
-            f"analyst={analyst_t}({analyst_c})  "
+            f"[{_ts()}] {ticker}: price={format_money(price, acct_ccy)} (T212, {acct_ccy})  "
+            f"P/E={pe}  analyst={analyst_t}({analyst_c})  "
             f"EPS-growth={eps_g}%  earnings={earnings}"
         )
 
@@ -310,6 +318,9 @@ class StockAnalyzer:
         result["analyst_target_mean"] = market_data.get("analyst_target_mean")
         result["analyst_consensus"]   = market_data.get("analyst_consensus")
         result["next_earnings"]       = market_data.get("next_earnings")
+        result["account_currency"]    = acct_ccy
+        result["instrument_currency"] = holding.get("instrument_currency")
+        result["quote_currency"]      = market_data.get("quote_currency")
 
         # Detect recommendation changes and record as trend flags
         prev = self.db.get_ticker_history(ticker, limit=1)
@@ -398,6 +409,17 @@ def _log_obsidian_result(gen, log_fn, path: Optional[str], run_scope: str) -> No
     log_fn(f"[{_ts()}] Obsidian: no .md written — {reason}")
 
 
+def _enrich_analyses_from_positions(db: Database, analyses: list[dict]) -> None:
+    account = db.get_account_currency()
+    pos_map = {p["ticker"]: p for p in db.get_positions()}
+    for a in analyses:
+        a.setdefault("account_currency", account)
+        if not a.get("instrument_currency"):
+            inst = (pos_map.get(a["ticker"]) or {}).get("instrument_currency")
+            if inst:
+                a["instrument_currency"] = inst
+
+
 def _generate_run_reports(
     db: Database, run_id: int, log_fn, run_scope: str = "full",
 ) -> None:
@@ -407,6 +429,7 @@ def _generate_run_reports(
         if not analyses:
             log_fn(f"[{_ts()}] Reports: skipped — no analyses saved for run {run_id}")
             return
+        _enrich_analyses_from_positions(db, analyses)
         from .reports import ReportGenerator
 
         gen = ReportGenerator()
@@ -465,6 +488,7 @@ def _generate_obsidian_report(
         if not analyses:
             log_fn(f"[{_ts()}] Obsidian: skipped — no analysis saved for this run")
             return
+        _enrich_analyses_from_positions(db, analyses)
         from .reports import ReportGenerator
 
         gen = ReportGenerator()
@@ -589,8 +613,15 @@ def _fetch_market_data(ticker: str) -> dict:
             except Exception:
                 pass
 
+        quote_currency = info.get("currency")
+        if isinstance(quote_currency, str):
+            quote_currency = quote_currency.strip().upper() or None
+        else:
+            quote_currency = None
+
         return {
             "ticker": used_symbol,
+            "quote_currency": quote_currency,
             "current_price": current_price,
             "week_52_high": float(fast.fifty_two_week_high) if fast.fifty_two_week_high else None,
             "week_52_low":  float(fast.fifty_two_week_low)  if fast.fifty_two_week_low  else None,
@@ -627,17 +658,23 @@ def _build_prompt(holding: dict, market_data: dict, handoff_note: Optional[dict]
             "whole pie thesis is broken."
         )
         lines.append("\n### Pie constituents")
+        acct = normalize_currency(holding.get("account_currency"))
         for m in holding.get("pie_members", []):
             lines.append(
-                f"- {m['ticker']}: {m.get('shares', 0):g} shares @ avg {m.get('avg_cost', 0):.4f}"
+                f"- {m['ticker']}: {m.get('shares', 0):g} shares @ avg "
+                f"{format_money(m.get('avg_cost'), acct)} ({acct})"
             )
         cost = holding.get("avg_cost", 0)
         price = holding.get("current_price") or market_data.get("current_price") or 0
         lines.append("\n### Pie totals")
-        lines.append(f"Invested (cost basis): {cost:.2f}")
-        lines.append(f"Current value: {price:.2f}")
+        lines.append(f"Invested (cost basis, {acct}): {format_money(cost, acct)}")
+        lines.append(f"Current value ({acct}): {format_money(price, acct)}")
         if cost:
-            lines.append(f"Unrealised P&L: {(price - cost):+.2f} ({(price - cost) / cost * 100:+.1f}%)")
+            pnl = (price - cost)
+            lines.append(
+                f"Unrealised P&L ({acct}): {format_money(pnl, acct, signed=True)} "
+                f"({pnl / cost * 100:+.1f}%)"
+            )
         lines.append("\nAnalyse this pie as one portfolio unit and return your JSON recommendation.")
         return "\n".join(lines)
 
@@ -647,6 +684,9 @@ def _build_prompt(holding: dict, market_data: dict, handoff_note: Optional[dict]
     t212_px = market_data.get("t212_current_price")
     pnl_pct = ((price - cost) / cost * 100) if cost else 0
     pnl_abs = (price - cost) * shares if (price and cost) else 0
+    acct = normalize_currency(holding.get("account_currency"))
+    inst = holding.get("instrument_currency")
+    quote_ccy = market_data.get("quote_currency")
 
     company = holding.get("instrument_name") or ""
     market_ticker = holding.get("market_ticker") or market_data.get("ticker") or ticker
@@ -682,19 +722,35 @@ def _build_prompt(holding: dict, market_data: dict, handoff_note: Optional[dict]
             lines.append("Ongoing catalysts: " + " | ".join(cats))
 
     lines.append("\n### Portfolio position (Trading 212 — authoritative)")
+    lines.append(f"Account currency: {acct} (all T212 wallet figures below are in {acct})")
+    if inst and inst != acct:
+        from .currency import instrument_currency_label
+
+        lines.append(f"Instrument listing currency: {instrument_currency_label(inst)}")
+    if quote_ccy and quote_ccy != acct:
+        lines.append(f"yfinance quote currency: {quote_ccy} (fundamentals/52w — not T212 wallet)")
+    if holding.get("currency_note"):
+        lines.append(holding["currency_note"])
     lines.append(f"Shares held: {shares}")
-    lines.append(f"Average cost: {cost:.4f}")
+    lines.append(f"Average cost per share: {format_money(cost, acct)} ({acct})")
     if t212_px:
-        lines.append(f"Current price (T212): {float(t212_px):.4f}")
+        lines.append(f"Current price per share (T212): {format_money(float(t212_px), acct)} ({acct})")
     else:
-        lines.append(f"Current price: {price:.4f}")
+        lines.append(f"Current price per share: {format_money(price, acct)} ({acct})")
     if holding.get("position_value") is not None:
-        lines.append(f"Position value (T212): {float(holding['position_value']):.2f}")
-    lines.append(f"Unrealised P&L: {pnl_abs:+.2f} ({pnl_pct:+.1f}%)")
+        lines.append(
+            f"Position value (T212): {format_money(float(holding['position_value']), acct)} ({acct})"
+        )
+    lines.append(
+        f"Unrealised P&L ({acct}): {format_money(pnl_abs, acct, signed=True)} ({pnl_pct:+.1f}%)"
+    )
 
     lines.append("\n### Market data")
+    q_label = f" ({quote_ccy})" if quote_ccy else ""
     if market_data.get("week_52_high"):
-        lines.append(f"52w range: {market_data['week_52_low']:.2f} – {market_data['week_52_high']:.2f}")
+        lines.append(
+            f"52w range{q_label}: {market_data['week_52_low']:.2f} – {market_data['week_52_high']:.2f}"
+        )
     if market_data.get("recent_closes"):
         lines.append("Recent closes (10d): " + ", ".join(str(p) for p in market_data["recent_closes"]))
     if market_data.get("market_cap"):
@@ -713,8 +769,9 @@ def _build_prompt(holding: dict, market_data: dict, handoff_note: Optional[dict]
 
     if market_data.get("analyst_target_mean"):
         lines.append("\n### Analyst consensus")
+        tgt_ccy = quote_ccy or "listing currency"
         lines.append(
-            f"Mean target: {market_data['analyst_target_mean']}  "
+            f"Mean target ({tgt_ccy}): {market_data['analyst_target_mean']}  "
             f"Range: {market_data.get('analyst_target_low', '?')} – {market_data.get('analyst_target_high', '?')}  "
             f"({market_data.get('analyst_count', '?')} analysts)"
         )

@@ -128,6 +128,11 @@ def sync_capital_from_t212(t212, db, holdings_cost: float) -> dict:
             "account_total_value": round(float(summary["total_value"]), 2),
             "cash_available":      round(float(summary.get("cash_available") or 0), 2),
         }
+        acct_ccy = summary.get("currency")
+        if acct_ccy:
+            from .currency import normalize_currency
+
+            db.set_setting("account_currency", normalize_currency(acct_ccy))
 
     if transactions:
         metrics = compute_capital_metrics(transactions, holdings_cost, summary)
@@ -359,9 +364,10 @@ def build_pie_holdings(db, live_prices: dict | None = None) -> list[dict]:
             "shares":       1,
             "avg_cost":     pie.get("invested_value") or total_cost,
             "current_price": pie.get("current_value") or total_value,
-            "is_pie":       True,
-            "pie_name":     pie["name"],
-            "pie_id":       pie["id"],
-            "pie_members":  members,
+            "is_pie":            True,
+            "pie_name":          pie["name"],
+            "pie_id":            pie["id"],
+            "pie_members":       members,
+            "account_currency":  db.get_account_currency(),
         })
     return holdings

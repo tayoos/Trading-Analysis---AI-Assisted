@@ -181,6 +181,20 @@ class Database:
         if "market_ticker" not in cols:
             conn.execute("ALTER TABLE positions ADD COLUMN market_ticker TEXT")
 
+        acols = {row[1] for row in conn.execute("PRAGMA table_info(analyses)")}
+        if "account_currency" not in acols:
+            conn.execute("ALTER TABLE analyses ADD COLUMN account_currency TEXT")
+        if "instrument_currency" not in acols:
+            conn.execute("ALTER TABLE analyses ADD COLUMN instrument_currency TEXT")
+        if "quote_currency" not in acols:
+            conn.execute("ALTER TABLE analyses ADD COLUMN quote_currency TEXT")
+
+    def get_account_currency(self) -> str:
+        from .currency import DEFAULT_ACCOUNT_CURRENCY, normalize_currency
+
+        raw = self.get_setting("account_currency")
+        return normalize_currency(raw or DEFAULT_ACCOUNT_CURRENCY)
+
     # ── Runs ───────────────────────────────────────────────────────────────────
 
     def create_run(self) -> int:
@@ -228,8 +242,10 @@ class Database:
                     news_summary, catalysts, risks, worries, outlook_90d,
                     current_price, cost_basis, shares,
                     pe_ratio, eps_growth_pct, analyst_target_mean,
-                    analyst_consensus, next_earnings, created_at)
-                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    analyst_consensus, next_earnings,
+                    account_currency, instrument_currency, quote_currency,
+                    created_at)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (
                     run_id, ticker,
                     result.get("recommendation"),
@@ -252,6 +268,9 @@ class Database:
                     result.get("analyst_target_mean"),
                     result.get("analyst_consensus"),
                     result.get("next_earnings"),
+                    result.get("account_currency"),
+                    result.get("instrument_currency"),
+                    result.get("quote_currency"),
                     _now(),
                 ),
             )
@@ -638,6 +657,7 @@ class Database:
             "account_total_value": account_total,
             "cash_available":      cash_available,
             "net_deposits_estimated": raw.get("capital_net_deposits_estimated") == "1",
+            "account_currency":    self.get_account_currency(),
         }
 
     def save_capital_metrics(self, metrics: dict) -> None:

@@ -884,15 +884,16 @@
 </div>
 
 <!-- Portfolio summary -->
+{% set acct = account_currency|default('GBP') %}
 <div class="summary-strip">
   <div class="s-card">
-    <div class="s-label">Portfolio Value</div>
-    <div class="s-value" id="s-value">{% if summary.total_value %}£{{ '{:,.2f}'.format(summary.total_value) }}{% else %}—{% endif %}</div>
-    <div class="s-sub" id="s-value-sub">{% if summary.value_source == 't212' %}T212 account value{% if summary.cash_available %} · £{{ '{:,.2f}'.format(summary.cash_available) }} cash{% endif %}{% else %}Sync T212 for account total{% endif %}</div>
+    <div class="s-label">Portfolio Value ({{ acct }})</div>
+    <div class="s-value" id="s-value">{% if summary.total_value %}{{ summary.total_value|money(acct) }}{% else %}—{% endif %}</div>
+    <div class="s-sub" id="s-value-sub">{% if summary.value_source == 't212' %}T212 account value{% if summary.cash_available %} · {{ summary.cash_available|money(acct) }} cash{% endif %}{% else %}Sync T212 for account total{% endif %}</div>
   </div>
   <div class="s-card clickable" onclick="openCapitalModal('net-deposit')" title="Deposits minus withdrawals">
     <div class="s-label">Net deposit</div>
-    <div class="s-value" id="s-net-deposit">{% if capital.net_deposits is not none %}£{{ '{:,.2f}'.format(capital.net_deposits) }}{% else %}—{% endif %}</div>
+    <div class="s-value" id="s-net-deposit">{% if capital.net_deposits is not none %}{{ capital.net_deposits|money(acct) }}{% else %}—{% endif %}</div>
     <div class="s-sub" id="s-net-deposit-sub">
       {% if capital.last_error == 'missing_transactions_scope' %}
       Enable <code>history:transactions</code> on API key
@@ -901,7 +902,7 @@
       {% elif capital.net_deposits_estimated %}
       Estimated from T212 · sync for exact
       {% elif capital.reinvested is not none and capital.reinvested > 0 %}
-      £{{ '{:,.2f}'.format(capital.reinvested) }} from dividends &amp; gains
+      {{ capital.reinvested|money(acct) }} from dividends &amp; gains
       {% else %}
       Your own money in
       {% endif %}
@@ -909,7 +910,7 @@
   </div>
   <div class="s-card clickable" onclick="openCapitalModal('currently-invested')" title="Total cost basis of open positions">
     <div class="s-label">Currently invested</div>
-    <div class="s-value" id="s-currently-invested">{% if capital.holdings_cost is not none %}£{{ '{:,.2f}'.format(capital.holdings_cost) }}{% else %}—{% endif %}</div>
+    <div class="s-value" id="s-currently-invested">{% if capital.holdings_cost is not none %}{{ capital.holdings_cost|money(acct) }}{% else %}—{% endif %}</div>
     <div class="s-sub">Cost basis of holdings</div>
   </div>
   <div class="s-card">
@@ -992,7 +993,7 @@
           <span class="analysis-spinner" aria-hidden="true"></span>
           <span class="card-name-text" id="cname-{{ ticker }}">{{ display_name }}</span>
         </div>
-        <div class="card-sub">{{ ticker }}{% if card.market_ticker and card.market_ticker != ticker %} · quotes {{ card.market_ticker }}{% endif %}{% if card.confidence %} · <span class="conf-badge conf-{{ card.confidence }}">{{ card.confidence }} confidence</span>{% endif %}{% if not has_price and card.price_error %} · <span style="color:var(--hold-short)">no market quote</span>{% elif card.price_source == 't212' %} · <span style="color:var(--muted)">T212 price</span>{% endif %}</div>
+        <div class="card-sub">{{ ticker }}{% if card.market_ticker and card.market_ticker != ticker %} · quotes {{ card.market_ticker }}{% endif %}{% if card.currency_note %} · <span style="color:var(--muted)" title="{{ card.currency_note }}">{{ card.instrument_currency }}</span>{% endif %}{% if card.confidence %} · <span class="conf-badge conf-{{ card.confidence }}">{{ card.confidence }} confidence</span>{% endif %}{% if not has_price and card.price_error %} · <span style="color:var(--hold-short)">no market quote</span>{% elif card.price_source == 't212' %} · <span style="color:var(--muted)">T212 · {{ acct }}</span>{% endif %}</div>
       </div>
       <div class="card-header-actions">
         <button type="button" class="card-analyse-btn" title="Analyse this position only"
@@ -1006,7 +1007,7 @@
     </div>
 
     <div class="price-row">
-      <span class="price-val">{% if has_price %}{% if price >= 1 %}£{{ '{:,.2f}'.format(price) }}{% elif price >= 0.01 %}£{{ '{:,.4f}'.format(price) }}{% else %}£{{ '{:,.6f}'.format(price) }}{% endif %}{% else %}—{% endif %}</span>
+      <span class="price-val">{% if has_price %}{{ price|money(acct) }}{% else %}—{% endif %}</span>
       <span class="pnl-pill {{ 'pos' if (pnl_pct >= 0) else ('neg' if (has_price and cost) else 'neu') }}">
         {{ '%+.1f'|format(pnl_pct) + '%' if (has_price and cost and cost > 0) else '—' }}
       </span>
@@ -1018,16 +1019,16 @@
         <span class="h-val">{{ '%g'|format(shares) if shares else '—' }}</span>
       </div>
       <div class="h-stat">
-        <span class="h-lbl">Avg Cost</span>
-        <span class="h-val">{% if cost %}£{{ '{:,.2f}'.format(cost) }}{% else %}—{% endif %}</span>
+        <span class="h-lbl">Avg Cost ({{ acct }})</span>
+        <span class="h-val">{% if cost %}{{ cost|money(acct) }}{% else %}—{% endif %}</span>
       </div>
       <div class="h-stat">
         <span class="h-lbl">P&amp;L</span>
-        <span class="h-val {{ 'pos' if pnl_abs is not none and pnl_abs >= 0 else ('neg' if pnl_abs is not none else '') }}">{% if pnl_abs is not none %}{{ '+£' if pnl_abs >= 0 else '-£' }}{{ '{:,.2f}'.format(pnl_abs|abs) }}{% else %}—{% endif %}</span>
+        <span class="h-val {{ 'pos' if pnl_abs is not none and pnl_abs >= 0 else ('neg' if pnl_abs is not none else '') }}">{% if pnl_abs is not none %}{{ pnl_abs|money_signed(acct) }}{% else %}—{% endif %}</span>
       </div>
       <div class="h-stat">
         <span class="h-lbl">Value</span>
-        <span class="h-val">{% if has_val %}{% if val >= 10 %}£{{ '{:,.2f}'.format(val) }}{% else %}£{{ '{:,.2f}'.format(val) }}{% endif %}{% else %}—{% endif %}</span>
+        <span class="h-val">{% if has_val %}{{ val|money(acct) }}{% else %}—{% endif %}</span>
       </div>
     </div>
 
@@ -1121,6 +1122,17 @@
 
 <script>
   let polling = false;
+  let accountCurrency = '{{ account_currency|default("GBP") }}';
+  const CCY_SYM = { GBP: '£', USD: '$', EUR: '€', CHF: 'CHF ', CAD: 'C$', AUD: 'A$' };
+  function ccySym() { return CCY_SYM[accountCurrency] || (accountCurrency + ' '); }
+  function fmtMoney(n, signed) {
+    if (n == null || Number.isNaN(n)) return '—';
+    const v = Number(n);
+    const abs = Math.abs(v).toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const s = ccySym();
+    if (signed) return (v >= 0 ? '+' : '-') + s + abs;
+    return (v < 0 ? '-' : '') + s + abs;
+  }
 
   // ── Summary ────────────────────────────────────────────────────────────────
   async function loadSummary() {
@@ -1128,12 +1140,13 @@
       const r = await fetch('/api/dashboard');
       const d = await r.json();
       const s = d.summary;
-      document.getElementById('s-value').textContent = '£' + fmt(s.total_value);
+      if (s.account_currency) accountCurrency = s.account_currency;
+      document.getElementById('s-value').textContent = fmtMoney(s.total_value);
       const valSub = document.getElementById('s-value-sub');
       if (valSub) {
         if (s.value_source === 't212') {
           let t = 'T212 account value';
-          if (s.cash_available != null) t += ' · £' + fmt(s.cash_available) + ' cash';
+          if (s.cash_available != null) t += ' · ' + fmtMoney(s.cash_available) + ' cash';
           valSub.textContent = t;
         } else {
           valSub.textContent = 'Sync T212 for account total';
@@ -1142,11 +1155,11 @@
       const netEl = document.getElementById('s-net-deposit');
       const netSub = document.getElementById('s-net-deposit-sub');
       if (s.net_deposits != null && s.net_deposits_known !== false) {
-        netEl.textContent = '£' + fmt(s.net_deposits);
+        netEl.textContent = fmtMoney(s.net_deposits);
         if (netSub && s.net_deposits_estimated) {
           netSub.textContent = 'Estimated from T212 · sync for exact';
         } else if (netSub && s.reinvested > 0) {
-          netSub.textContent = '£' + fmt(s.reinvested) + ' from dividends & gains';
+          netSub.textContent = fmtMoney(s.reinvested) + ' from dividends & gains';
         }
       } else if (netEl) {
         netEl.textContent = '—';
@@ -1157,10 +1170,10 @@
         }
       }
       const invEl = document.getElementById('s-currently-invested');
-      if (invEl) invEl.textContent = s.holdings_cost != null ? ('£' + fmt(s.holdings_cost)) : '—';
+      if (invEl) invEl.textContent = s.holdings_cost != null ? fmtMoney(s.holdings_cost) : '—';
       const pnl = s.total_pnl, pct = s.total_pnl_pct;
       const pnlEl = document.getElementById('s-pnl');
-      pnlEl.textContent = (pnl >= 0 ? '+£' : '-£') + fmt(Math.abs(pnl));
+      pnlEl.textContent = fmtMoney(pnl, true);
       pnlEl.className = 's-value ' + (pnl >= 0 ? 'pos' : 'neg');
       document.getElementById('s-pnl-pct').textContent = (pct >= 0 ? '+' : '') + pct + '%';
       document.getElementById('s-count').textContent = s.position_count;
