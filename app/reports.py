@@ -21,7 +21,20 @@ import openpyxl
 from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 
+from .currency import (
+    currency_symbol,
+    format_money,
+    instrument_currency_label,
+    normalize_currency,
+)
+
 logger = logging.getLogger(__name__)
+
+
+def _analysis_currencies(a: dict, default_account: str = "GBP") -> tuple[str, Optional[str]]:
+    acct = normalize_currency(a.get("account_currency") or default_account)
+    inst = (a.get("instrument_currency") or "").strip().upper() or None
+    return acct, inst
 
 # Built-in defaults when /obsidian is mounted (override via env only if needed)
 _DEFAULT_OBSIDIAN_VAULT = "/obsidian"
@@ -183,9 +196,15 @@ class ReportGenerator:
         ws = wb.active
         ws.title = "Analysis"
 
+        acct_sample = normalize_currency(
+            (analyses[0].get("account_currency") if analyses else None) or "GBP",
+        )
+        sym = currency_symbol(acct_sample).strip() or acct_sample
         headers = [
-            "Ticker", "Rec", "Confidence", "Current Price", "Cost Basis",
-            "P&L %", "P&L £", "Shares", "30d Target", "Target Lo", "Target Hi",
+            "Ticker", "Rec", "Confidence",
+            f"Price ({acct_sample})", f"Avg cost/sh ({acct_sample})",
+            "P&L %", f"P&L ({sym})", "Shares", "Inst. ccy",
+            "30d Target", "Target Lo", "Target Hi",
             "P/E", "EPS Growth %", "Analyst Target", "Analyst Consensus",
             "News Sentiment", "Reasoning", "Catalysts", "Risks", "Worries",
             "90d Outlook",
@@ -198,6 +217,7 @@ class ReportGenerator:
             shares = a.get("shares") or 0
             pnl_pct = ((price - cost) / cost * 100) if cost else 0
             pnl_abs = (price - cost) * shares
+            _acct, inst = _analysis_currencies(a, acct_sample)
 
             values = [
                 a.get("ticker", ""),
@@ -208,6 +228,7 @@ class ReportGenerator:
                 pnl_pct / 100,
                 pnl_abs,
                 shares,
+                instrument_currency_label(inst) if inst else "",
                 a.get("price_target_30d"),
                 a.get("price_target_lo"),
                 a.get("price_target_hi"),
@@ -236,7 +257,7 @@ class ReportGenerator:
 
             ws.cell(row=row_num, column=6).number_format = "0.00%"
 
-        col_widths = [10, 12, 12, 14, 12, 10, 10, 10, 12, 10, 10,
+        col_widths = [10, 12, 12, 14, 12, 10, 10, 10, 10, 12, 10, 10,
                       8, 12, 14, 16, 16, 50, 40, 40, 30, 50]
         for i, w in enumerate(col_widths, start=1):
             ws.column_dimensions[get_column_letter(i)].width = w
@@ -271,13 +292,17 @@ class ReportGenerator:
             cost   = a.get("cost_basis") or 0
             shares = a.get("shares") or 0
             pnl_pct = ((price - cost) / cost * 100) if cost else 0
+            acct, inst = _analysis_currencies(a)
+            inst_note = f"  Listing: {instrument_currency_label(inst)}" if inst and inst != acct else ""
             lines += [
                 "",
                 "─" * 72,
                 f"  {a.get('ticker', '?')}  [{a.get('recommendation', '?')}]  "
                 f"Confidence: {a.get('confidence', '?')}",
                 "─" * 72,
-                f"  Price: {price:.2f}  Cost: {cost:.2f}  P&L: {pnl_pct:+.1f}%  Shares: {shares}",
+                f"  Price: {format_money(price, acct)}  "
+                f"Avg cost/sh: {format_money(cost, acct)}  "
+                f"P&L: {pnl_pct:+.1f}%  Shares: {shares}{inst_note}",
                 f"  30d Target: {a.get('price_target_30d', '?')}  "
                 f"Range: {a.get('price_target_lo', '?')} – {a.get('price_target_hi', '?')}",
                 "",
@@ -495,6 +520,8 @@ class ReportGenerator:
             cost = a.get("cost_basis") or 0
             shares = a.get("shares") or 0
             pnl_pct = ((price - cost) / cost * 100) if cost else 0
+            acct, inst = _analysis_currencies(a)
+            quote_ccy = (a.get("quote_currency") or "").strip().upper()
 
             lines += [
                 f"## {ticker}",
@@ -503,10 +530,17 @@ class ReportGenerator:
                 "",
                 "| | |",
                 "|---|---|",
-                f"| Price | {price:.4f} |" if price else "| Price | — |",
-                f"| Cost | {cost:.4f} |" if cost else "| Cost | — |",
+                f"| Account currency (T212) | {acct} |",
+            ]
+            if inst and inst != acct:
+                lines.append(f"| Instrument listing | {instrument_currency_label(inst)} |")
+            if quote_ccy and quote_ccy != acct:
+                lines.append(f"| Market quote currency | {quote_ccy} |")
+            lines += [
+                f"| Price per share (T212, {acct}) | {format_money(price, acct) if price else '—'} |",
+                f"| Avg cost per share ({acct}) | {format_money(cost, acct) if cost else '—'} |",
                 f"| Shares | {shares:g} |" if shares else "| Shares | — |",
-                f"| P&L | {pnl_pct:+.1f}% |" if cost else "| P&L | — |",
+                f"| P&L % | {pnl_pct:+.1f}% |" if cost else "| P&L % | — |",
                 f"| 30d target | {a.get('price_target_30d', '—')} |",
                 "",
             ]

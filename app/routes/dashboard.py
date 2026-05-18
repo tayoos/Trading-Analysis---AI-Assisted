@@ -32,6 +32,7 @@ def index():
         pies=view["pies"],
         summary=view["summary"],
         capital=view["capital"],
+        account_currency=view["account_currency"],
         handoff_notes=view["handoff_notes"],
         analyzer_status=current_app.extensions["analyzer"].status,
         key_warnings=key_warnings,

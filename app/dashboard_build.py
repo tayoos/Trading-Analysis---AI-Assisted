@@ -6,6 +6,7 @@ from __future__ import annotations
 from collections import defaultdict
 
 from .capital import format_pie_icon
+from .currency import enrich_position_currencies
 from .ticker_resolve import _is_valid_yf_symbol
 
 PIE_TICKER_PREFIX = "PIE:"
@@ -102,6 +103,8 @@ def build_card(
         None if card.get("current_price") else (price_errors or {}).get(ticker)
     )
     card["handoff_note"] = handoff_notes.get(ticker)
+    if p.get("instrument_currency"):
+        card["instrument_currency"] = p["instrument_currency"]
     return card
 
 
@@ -111,6 +114,7 @@ def build_dashboard_view(
 ) -> dict:
     analyses = db.get_latest_analyses()
     positions = db.get_positions()
+    account_currency = db.get_account_currency()
     handoff_notes = db.get_all_handoff_notes()
     pies = db.get_pies()
 
@@ -153,17 +157,21 @@ def build_dashboard_view(
         if is_pie_ticker(a["ticker"]):
             continue
         ticker = a["ticker"]
-        cards_by_ticker[ticker] = build_card(
+        card = build_card(
             a, pos_map.get(ticker), live_prices, handoff_notes, company_names, price_errors,
         )
+        enrich_position_currencies(card, account_currency)
+        cards_by_ticker[ticker] = card
         analysed.add(ticker)
 
     for p in positions:
         ticker = p["ticker"]
         if ticker not in analysed:
-            cards_by_ticker[ticker] = build_card(
+            card = build_card(
                 None, p, live_prices, handoff_notes, company_names, price_errors,
             )
+            enrich_position_currencies(card, account_currency)
+            cards_by_ticker[ticker] = card
 
     # Shares held inside pies (same ticker may appear in multiple pies)
     pie_qty_by_ticker: dict[str, float] = defaultdict(float)
@@ -246,6 +254,7 @@ def build_dashboard_view(
         )
 
     summary = {
+        "account_currency":       account_currency,
         "total_value":            round(total_value, 2),
         "value_source":           value_source,
         "positions_market_value": round(positions_market_value, 2),
@@ -266,9 +275,12 @@ def build_dashboard_view(
         "capital_error":      capital.get("last_error"),
     }
 
+    capital["account_currency"] = account_currency
+
     return {
         "summary": summary,
         "capital": capital,
+        "account_currency": account_currency,
         "pies": pie_groups,
         "cards": standalone_cards,
         "all_cards": list(cards_by_ticker.values()),

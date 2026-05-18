@@ -31,6 +31,20 @@ def create_app() -> Flask:
     app = Flask(__name__, template_folder="../templates")
     app.secret_key = os.getenv("SECRET_KEY", os.urandom(24).hex())
 
+    from .currency import format_money, normalize_currency
+
+    @app.template_filter("money")
+    def _money_filter(amount, currency="GBP"):
+        return format_money(amount, currency)
+
+    @app.template_filter("money_signed")
+    def _money_signed_filter(amount, currency="GBP"):
+        return format_money(amount, currency, signed=True)
+
+    @app.template_global()
+    def account_currency_default():
+        return normalize_currency(os.getenv("ACCOUNT_CURRENCY", "GBP"))
+
     # Unwrap X-Forwarded-For / X-Forwarded-Proto from Traefik so that
     # request.remote_addr is always the real client IP, not Traefik's IP.
     # x_for=1 means trust one proxy hop (Traefik); increase if you have
