@@ -438,6 +438,177 @@
 
   .empty-grid h2 { font-size: 20px; color: var(--text); margin-bottom: 8px; }
   .empty-grid p  { font-size: 13px; max-width: 440px; margin: 0 auto; line-height: 1.6; }
+
+  /* ── Modal ──────────────────────────────────────────────────────────── */
+  .modal-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,.72);
+    z-index: 500;
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+  }
+
+  .modal-overlay.open { display: flex; }
+
+  .modal-box {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    width: 100%;
+    max-width: 560px;
+    max-height: 90vh;
+    overflow-y: auto;
+    position: relative;
+    animation: modal-in 0.18s ease;
+  }
+
+  @keyframes modal-in {
+    from { opacity: 0; transform: scale(0.96) translateY(8px); }
+    to   { opacity: 1; transform: scale(1)    translateY(0);   }
+  }
+
+  .modal-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 20px 20px 10px;
+    position: sticky;
+    top: 0;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    z-index: 1;
+  }
+
+  .modal-name {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--text);
+    letter-spacing: -0.3px;
+    margin-bottom: 3px;
+  }
+
+  .modal-sub {
+    font-size: 12px;
+    color: var(--muted);
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    flex-wrap: wrap;
+  }
+
+  .modal-close {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: var(--muted);
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    font-size: 16px;
+    cursor: pointer;
+    padding: 0;
+    flex-shrink: 0;
+    line-height: 1;
+    transition: color 0.15s, background 0.15s;
+  }
+
+  .modal-close:hover { color: var(--text); background: var(--surface2); border-color: var(--text); }
+
+  .modal-price-row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    padding: 14px 20px 8px;
+    gap: 8px;
+  }
+
+  .modal-price { font-size: 30px; font-weight: 700; letter-spacing: -0.8px; color: var(--text); }
+
+  .modal-holdings {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0;
+    padding: 0 20px 16px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .mh-stat {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 8px 0;
+  }
+
+  .mh-stat + .mh-stat {
+    border-left: 1px solid var(--border);
+    padding-left: 14px;
+    margin-left: 14px;
+  }
+
+  .mh-lbl { font-size: 9px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
+  .mh-val { font-size: 15px; font-weight: 700; color: var(--text); }
+  .mh-val.pos { color: #00c896; }
+  .mh-val.neg { color: #f0443a; }
+  .mh-val.div { color: #b388ff; }
+
+  .modal-section {
+    padding: 14px 20px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .modal-section:last-child { border-bottom: none; }
+
+  .modal-section-title {
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    margin-bottom: 10px;
+  }
+
+  .modal-reasoning {
+    font-size: 13px;
+    line-height: 1.6;
+    color: var(--muted);
+  }
+
+  .modal-tags { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+
+  .modal-tag-row { display: flex; gap: 6px; flex-wrap: wrap; align-items: flex-start; }
+
+  .modal-tag-lbl {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    white-space: nowrap;
+    padding-top: 3px;
+    min-width: 56px;
+  }
+
+  .modal-tag-lbl.cat  { color: #00c896; }
+  .modal-tag-lbl.risk { color: #f0443a; }
+
+  .modal-fp-row { display: flex; gap: 6px; flex-wrap: wrap; }
+
+  .modal-open-link {
+    display: block;
+    text-align: center;
+    padding: 14px 20px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--buy);
+    border-top: 1px solid var(--border);
+    text-decoration: none;
+  }
+
+  .modal-open-link:hover { background: var(--surface2); text-decoration: none; }
 </style>
 {% endblock %}
 

@@ -56,6 +56,8 @@ def index():
 
     key_warnings   = _build_key_warnings(db.get_key_ages())
     dividend_stats = db.get_dividend_stats()
+    div_map        = {d["ticker"]: round(d["total_received"], 2)
+                      for d in db.get_dividend_summary()}
 
     return render_template(
         "dashboard.html",
@@ -64,6 +66,7 @@ def index():
         analyzer_status=current_app.extensions["analyzer"].status,
         key_warnings=key_warnings,
         dividend_stats=dividend_stats,
+        div_map=div_map,
         company_names=company_names,
         active_page="dashboard",
     )
