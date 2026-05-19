@@ -1,0 +1,419 @@
+{% extends "base.html" %}
+
+{% block title %}Discovery — StockAnalyser{% endblock %}
+
+{% block head %}
+<style>
+  /* ── Page layout ────────────────────────────────────────────────────── */
+  .page { padding: 24px; max-width: 1200px; }
+
+  /* ── Section header row ─────────────────────────────────────────────── */
+  .section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 18px;
+    flex-wrap: wrap;
+  }
+
+  .section-header-left {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .section-h2 {
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--text);
+  }
+
+  .stale-badge {
+    font-size: 11px;
+    font-weight: 600;
+    color: #ff9800;
+    background: rgba(255,152,0,.12);
+    border: 1px solid rgba(255,152,0,.25);
+    padding: 2px 9px;
+    border-radius: 20px;
+  }
+
+  .gen-meta {
+    font-size: 12px;
+    color: var(--muted);
+  }
+
+  /* ── Status banner ──────────────────────────────────────────────────── */
+  #gen-banner {
+    display: none;
+    background: rgba(33,150,243,.08);
+    border: 1px solid rgba(33,150,243,.2);
+    border-radius: var(--radius);
+    padding: 12px 16px;
+    font-size: 13px;
+    gap: 10px;
+    align-items: center;
+    margin-bottom: 18px;
+  }
+  #gen-banner.visible { display: flex; }
+  #gen-log {
+    font-family: monospace;
+    font-size: 12px;
+    color: var(--muted);
+    flex: 1;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+
+  /* ── Category grid ──────────────────────────────────────────────────── */
+  .cat-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: var(--gap);
+    margin-bottom: 32px;
+  }
+
+  .cat-col {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+  }
+
+  .cat-header {
+    padding: 12px 14px 10px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface2);
+  }
+
+  .cat-name {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    color: var(--muted);
+  }
+
+  .cat-name.growth    { color: #00c896; }
+  .cat-name.value     { color: #42a5f5; }
+  .cat-name.dividend  { color: #7c4dff; }
+  .cat-name.momentum  { color: #ff9800; }
+  .cat-name.defensive { color: #78909c; }
+
+  /* ── Idea card ──────────────────────────────────────────────────────── */
+  .idea-card {
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .idea-card:last-child { border-bottom: none; }
+
+  .idea-top {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 6px;
+  }
+
+  .idea-ticker {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--text);
+    line-height: 1;
+  }
+
+  .idea-company {
+    font-size: 11px;
+    color: var(--muted);
+    margin-top: 2px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 130px;
+  }
+
+  .idea-price {
+    font-size: 12px;
+    color: var(--muted);
+    text-align: right;
+    white-space: nowrap;
+  }
+
+  .conf-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 20px;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.3px;
+  }
+
+  .conf-HIGH   { background: rgba(0,200,150,.15);  color: #00c896; border: 1px solid rgba(0,200,150,.3); }
+  .conf-MEDIUM { background: rgba(255,152,0,.12);   color: #ff9800; border: 1px solid rgba(255,152,0,.25); }
+  .conf-LOW    { background: rgba(120,144,156,.12); color: #78909c; border: 1px solid rgba(120,144,156,.25); }
+
+  .idea-reasoning {
+    font-size: 12px;
+    color: var(--muted);
+    line-height: 1.5;
+    margin-bottom: 8px;
+  }
+
+  .pill-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+
+  .pill {
+    font-size: 10px;
+    padding: 2px 7px;
+    border-radius: 4px;
+    line-height: 1.4;
+  }
+
+  .pill-cat   { background: rgba(0,200,150,.08);  color: #00c896; border: 1px solid rgba(0,200,150,.15); }
+  .pill-risk  { background: rgba(240,68,58,.08);  color: #f0443a; border: 1px solid rgba(240,68,58,.15); }
+
+  /* ── Buy More section ───────────────────────────────────────────────── */
+  .buy-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: var(--gap);
+  }
+
+  .buy-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--buy);
+    border-radius: var(--radius);
+    padding: 14px 16px;
+  }
+
+  .buy-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 8px;
+  }
+
+  .buy-ticker {
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--text);
+  }
+
+  .buy-meta {
+    font-size: 12px;
+    color: var(--muted);
+    line-height: 1.7;
+    margin-bottom: 8px;
+  }
+
+  .buy-reasoning {
+    font-size: 12px;
+    color: var(--muted);
+    line-height: 1.5;
+    border-top: 1px solid var(--border);
+    padding-top: 8px;
+    margin-top: 4px;
+  }
+
+  /* ── Empty states ───────────────────────────────────────────────────── */
+  .cat-empty {
+    padding: 20px 14px;
+    font-size: 12px;
+    color: var(--muted);
+    text-align: center;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page">
+
+  <!-- ── New Ideas section ──────────────────────────────────────────────── -->
+  <div class="section-header">
+    <div class="section-header-left">
+      <span class="section-h2">New Stock Ideas</span>
+      {% if recs.stale %}
+        <span class="stale-badge">Stale</span>
+      {% endif %}
+      {% if recs.generated_at %}
+        <span class="gen-meta" id="gen-age"></span>
+      {% endif %}
+    </div>
+    <div style="display:flex;gap:8px;align-items:center;">
+      <button class="btn-primary" id="gen-btn" onclick="startGenerate()">Generate Fresh Ideas</button>
+    </div>
+  </div>
+
+  <div id="gen-banner">
+    <div class="spinner"></div>
+    <span id="gen-log">Starting…</span>
+  </div>
+
+  {% set has_any = recs.categories.growth or recs.categories.value or recs.categories.dividend or recs.categories.momentum or recs.categories.defensive %}
+
+  {% if not has_any %}
+    <div class="empty-state" style="margin-bottom:32px;">
+      <h2>No ideas yet</h2>
+      <p>Click <strong>Generate Fresh Ideas</strong> to ask the AI for new stock suggestions across Growth, Value, Dividend Income, Momentum, and Defensive categories.</p>
+    </div>
+  {% else %}
+    <div class="cat-grid" id="cat-grid">
+      {% for cat_key, cat_label in [('growth','Growth'), ('value','Value'), ('dividend','Dividend Income'), ('momentum','Momentum'), ('defensive','Defensive')] %}
+      {% set stocks = recs.categories[cat_key] %}
+      <div class="cat-col">
+        <div class="cat-header">
+          <div class="cat-name {{ cat_key }}">{{ cat_label }}</div>
+        </div>
+        {% if stocks %}
+          {% for s in stocks %}
+          <div class="idea-card">
+            <div class="idea-top">
+              <div>
+                <div class="idea-ticker">{{ s.ticker }}</div>
+                <div class="idea-company" title="{{ s.company_name }}">{{ s.company_name or '' }}</div>
+              </div>
+              <div style="text-align:right;">
+                <span class="conf-badge conf-{{ s.confidence }}">{{ s.confidence }}</span>
+                {% if s.price_at_rec %}
+                  <div class="idea-price">{{ '%.2f'|format(s.price_at_rec) }}</div>
+                {% endif %}
+              </div>
+            </div>
+            {% if s.reasoning %}
+              <div class="idea-reasoning">{{ s.reasoning }}</div>
+            {% endif %}
+            {% if s.catalysts %}
+              <div class="pill-row" style="margin-bottom:4px;">
+                {% for c in s.catalysts %}
+                  <span class="pill pill-cat">{{ c }}</span>
+                {% endfor %}
+              </div>
+            {% endif %}
+            {% if s.risks %}
+              <div class="pill-row">
+                {% for r in s.risks %}
+                  <span class="pill pill-risk">{{ r }}</span>
+                {% endfor %}
+              </div>
+            {% endif %}
+          </div>
+          {% endfor %}
+        {% else %}
+          <div class="cat-empty">No {{ cat_label }} ideas</div>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+  {% endif %}
+
+  <!-- ── Add More to Holdings section ─────────────────────────────────── -->
+  <div class="section-header" style="margin-top:8px;">
+    <span class="section-h2">Add More — Positions Rated BUY</span>
+    <span class="gen-meta">From the latest portfolio analysis</span>
+  </div>
+
+  {% if buy_more %}
+    <div class="buy-grid">
+      {% for a in buy_more %}
+      {% set cost = a.cost_basis or 0 %}
+      {% set price = a.current_price or 0 %}
+      {% set shares = a.shares or 0 %}
+      {% set pnl_pct = ((price - cost) / cost * 100) if cost else 0 %}
+      <div class="buy-card">
+        <div class="buy-top">
+          <span class="buy-ticker">{{ a.ticker }}</span>
+          <span class="conf-badge conf-{{ a.confidence or 'MEDIUM' }}">{{ a.confidence or 'MEDIUM' }}</span>
+        </div>
+        <div class="buy-meta">
+          {% if price %}<span>Price: <strong>{{ '%.2f'|format(price) }}</strong></span><br>{% endif %}
+          {% if cost %}<span>Avg cost: <strong>{{ '%.2f'|format(cost) }}</strong></span><br>{% endif %}
+          {% if shares %}<span>Shares held: <strong>{{ shares }}</strong></span><br>{% endif %}
+          {% if cost and price %}
+            <span>P&amp;L: <strong class="{{ 'pos' if pnl_pct >= 0 else 'neg' }}">{{ '%+.1f'|format(pnl_pct) }}%</strong></span>
+          {% endif %}
+        </div>
+        {% if a.reasoning %}
+          <div class="buy-reasoning">{{ a.reasoning }}</div>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+  {% else %}
+    <div class="empty-state" style="padding:40px 24px;">
+      <h2>No BUY-rated holdings</h2>
+      <p>Run a portfolio analysis first. Any holdings rated BUY will appear here as add-more opportunities.</p>
+    </div>
+  {% endif %}
+
+</div>
+
+<script>
+  // ── Generated-at age display ──────────────────────────────────────────
+  const generatedAt = {{ ('"' ~ recs.generated_at ~ '"') if recs.generated_at else 'null' }};
+  if (generatedAt) {
+    const el = document.getElementById('gen-age');
+    if (el) {
+      const ms = Date.now() - new Date(generatedAt).getTime();
+      const h = Math.floor(ms / 3600000);
+      const m = Math.floor((ms % 3600000) / 60000);
+      el.textContent = h > 0 ? `${h}h ${m}m ago` : `${m}m ago`;
+    }
+  }
+
+  // ── Generate flow ─────────────────────────────────────────────────────
+  let pollTimer = null;
+
+  function startGenerate() {
+    const btn = document.getElementById('gen-btn');
+    btn.disabled = true;
+    btn.textContent = 'Generating…';
+    const banner = document.getElementById('gen-banner');
+    banner.classList.add('visible');
+    document.getElementById('gen-log').textContent = 'Starting…';
+
+    fetch('/api/discovery/generate', { method: 'POST' })
+      .then(() => { pollTimer = setInterval(pollStatus, 1500); })
+      .catch(err => {
+        document.getElementById('gen-log').textContent = 'Error: ' + err;
+        btn.disabled = false;
+        btn.textContent = 'Generate Fresh Ideas';
+      });
+  }
+
+  function pollStatus() {
+    fetch('/api/discovery/status')
+      .then(r => r.json())
+      .then(data => {
+        const lines = data.progress || [];
+        if (lines.length) {
+          document.getElementById('gen-log').textContent = lines[lines.length - 1];
+        }
+        if (data.status === 'done' || data.status === 'error') {
+          clearInterval(pollTimer);
+          if (data.status === 'done') {
+            location.reload();
+          } else {
+            document.getElementById('gen-log').textContent = 'Generation failed — check logs.';
+            document.getElementById('gen-btn').disabled = false;
+            document.getElementById('gen-btn').textContent = 'Generate Fresh Ideas';
+          }
+        }
+      });
+  }
+
+  // Auto-resume polling if generation was already running when page loaded
+  {% if ideas_status.status == 'running' %}
+    document.getElementById('gen-btn').disabled = true;
+  document.getElementById('gen-btn').textContent = 'Generating…';
+    document.getElementById('gen-banner').classList.add('visible');
+    pollTimer = setInterval(pollStatus, 1500);
+  {% endif %}
+</script>
+{% endblock %}

@@ -17,6 +17,34 @@ from .database import Database
 
 logger = logging.getLogger(__name__)
 
+_IDEAS_SYSTEM_PROMPT = """You are a stock research analyst generating fresh investment ideas for a retail investor.
+Output ONLY a valid JSON object — no markdown fences, no preamble, no explanation outside the JSON.
+
+For each suggested stock provide:
+- ticker: exchange ticker symbol compatible with yfinance (e.g. AAPL, TSLA, BA.L)
+- company_name: full company name
+- confidence: "HIGH" | "MEDIUM" | "LOW"
+- reasoning: 2-3 sentence investment thesis
+- catalysts: list of 2-3 specific near-term catalysts
+- risks: list of 2 key risks
+
+JSON schema (all keys required, 3-5 stocks per category):
+{
+  "growth":    [{"ticker":"...", "company_name":"...", "confidence":"HIGH", "reasoning":"...", "catalysts":["...","..."], "risks":["...","..."]}, ...],
+  "value":     [...],
+  "dividend":  [...],
+  "momentum":  [...],
+  "defensive": [...]
+}
+
+Guidelines:
+- Do NOT suggest tickers already in the user's portfolio
+- Mix large-cap and mid-cap ideas for variety
+- For dividend: focus on sustainable yield and dividend growth track record
+- For momentum: clear price and fundamental momentum with an identifiable near-term catalyst
+- For defensive: recession resilience, stable cash flows, essential products/services
+- Be specific and actionable — avoid vague generalities"""
+
 _SYSTEM_PROMPT = """You are an expert equity analyst AI assistant. Your job is to analyse individual stock positions in a user's portfolio and return a structured JSON recommendation.
 
 Output ONLY a valid JSON object — no markdown fences, no preamble, no explanation outside the JSON.
@@ -67,6 +95,10 @@ class StockAnalyzer:
         self._run_id: Optional[int] = None
         self._status: str = "idle"   # idle | running | done | error
         self._progress: list[str] = []
+
+        self._ideas_lock = threading.Lock()
+        self._ideas_status: str = "idle"   # idle | running | done | error
+        self._ideas_progress: list[str] = []
 
     # ── Status (thread-safe) ───────────────────────────────────────────────────
 
@@ -206,6 +238,71 @@ class StockAnalyzer:
 
         return result
 
+    # ── Ideas / Discovery ──────────────────────────────────────────────────────
+
+    @property
+    def ideas_status(self) -> dict:
+        with self._ideas_lock:
+            return {
+                "status": self._ideas_status,
+                "progress": list(self._ideas_progress),
+            }
+
+    def _ideas_log(self, msg: str) -> None:
+        logger.info(msg)
+        with self._ideas_lock:
+            self._ideas_progress.append(msg)
+
+    def generate_stock_ideas(self, portfolio_tickers: list[str]) -> None:
+        with self._ideas_lock:
+            if self._ideas_status == "running":
+                return
+            self._ideas_status = "running"
+            self._ideas_progress = []
+
+        try:
+            self._ideas_log(f"[{_ts()}] Building discovery prompt…")
+            prompt = _build_ideas_prompt(portfolio_tickers)
+            self._ideas_log(f"[{_ts()}] Sending to Claude for stock ideas…")
+            raw = _call_claude_sync(_IDEAS_SYSTEM_PROMPT + "\n\n" + prompt)
+            self._ideas_log(f"[{_ts()}] Claude response received ({len(raw)} chars)")
+
+            data = json.loads(raw)
+            categories = ["growth", "value", "dividend", "momentum", "defensive"]
+            flat: list[dict] = []
+            for cat in categories:
+                stocks = data.get(cat, [])
+                self._ideas_log(f"[{_ts()}] {cat}: {len(stocks)} suggestions")
+                for s in stocks:
+                    s["category"] = cat
+                    ticker = s.get("ticker", "")
+                    try:
+                        price = yf.Ticker(ticker).fast_info.last_price
+                        s["price_at_rec"] = round(float(price), 4) if price else None
+                    except Exception:
+                        s["price_at_rec"] = None
+                    flat.append(s)
+
+            self.db.save_stock_recommendations(flat)
+            self._ideas_log(f"[{_ts()}] Saved {len(flat)} recommendations to DB")
+            with self._ideas_lock:
+                self._ideas_status = "done"
+
+        except Exception as exc:
+            self._ideas_log(f"[{_ts()}] ERROR: {exc}")
+            logger.exception("generate_stock_ideas failed")
+            with self._ideas_lock:
+                self._ideas_status = "error"
+
+    def generate_stock_ideas_bg(self, portfolio_tickers: list[str]) -> None:
+        t = threading.Thread(
+            target=self.generate_stock_ideas,
+            args=(portfolio_tickers,),
+            daemon=True,
+            name="ideas-generator",
+        )
+        t.start()
+
     # ── Background runner ──────────────────────────────────────────────────────
 
     def run_in_background(self, holdings: list[dict]) -> None:
@@ -313,6 +410,17 @@ def _fetch_market_data(ticker: str) -> dict:
     except Exception as exc:
         logger.warning("yfinance failed for %s: %s", ticker, exc)
         return {"ticker": ticker, "current_price": None}
+
+
+def _build_ideas_prompt(portfolio_tickers: list[str]) -> str:
+    date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    tickers_str = ", ".join(portfolio_tickers) if portfolio_tickers else "none"
+    return (
+        f"Today's date: {date_str}\n\n"
+        f"Existing portfolio (do NOT suggest these): {tickers_str}\n\n"
+        "Generate 3-5 fresh stock ideas per investment category. "
+        "Return only the JSON object as specified."
+    )
 
 
 def _build_prompt(holding: dict, market_data: dict, handoff_note: Optional[dict]) -> str:

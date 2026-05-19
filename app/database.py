@@ -133,10 +133,25 @@ class Database:
                     updated_at TEXT NOT NULL
                 );
 
+                CREATE TABLE IF NOT EXISTS stock_recommendations (
+                    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                    ticker       TEXT NOT NULL,
+                    company_name TEXT,
+                    category     TEXT NOT NULL,
+                    confidence   TEXT NOT NULL,
+                    reasoning    TEXT,
+                    catalysts    TEXT,
+                    risks        TEXT,
+                    price_at_rec REAL,
+                    generated_at TEXT NOT NULL,
+                    status       TEXT NOT NULL DEFAULT 'active'
+                );
+
                 CREATE INDEX IF NOT EXISTS idx_analyses_run ON analyses(run_id);
                 CREATE INDEX IF NOT EXISTS idx_analyses_ticker ON analyses(ticker);
                 CREATE INDEX IF NOT EXISTS idx_trades_ticker ON trades(ticker);
                 CREATE INDEX IF NOT EXISTS idx_dividends_ticker ON dividends(ticker);
+                CREATE INDEX IF NOT EXISTS idx_recs_status ON stock_recommendations(status);
             """)
 
     # ── Runs ───────────────────────────────────────────────────────────────────
@@ -466,6 +481,64 @@ class Database:
                         note[field] = []
             result[note["ticker"]] = note
         return result
+
+    # ── Stock Recommendations (Discovery) ─────────────────────────────────────
+
+    def save_stock_recommendations(self, recs: list[dict]) -> None:
+        now = _now()
+        with self._conn() as conn:
+            conn.execute("UPDATE stock_recommendations SET status='expired' WHERE status='active'")
+            for r in recs:
+                conn.execute(
+                    """INSERT INTO stock_recommendations
+                       (ticker, company_name, category, confidence, reasoning,
+                        catalysts, risks, price_at_rec, generated_at, status)
+                       VALUES (?,?,?,?,?,?,?,?,?,'active')""",
+                    (
+                        r.get("ticker"), r.get("company_name"),
+                        r.get("category"), r.get("confidence"),
+                        r.get("reasoning"),
+                        json.dumps(r.get("catalysts", [])),
+                        json.dumps(r.get("risks", [])),
+                        r.get("price_at_rec"),
+                        now,
+                    ),
+                )
+
+    def get_stock_recommendations(self) -> dict:
+        with self._conn() as conn:
+            rows = conn.execute(
+                "SELECT * FROM stock_recommendations WHERE status='active' ORDER BY category, id"
+            ).fetchall()
+
+        categories: dict[str, list] = {
+            "growth": [], "value": [], "dividend": [], "momentum": [], "defensive": []
+        }
+        generated_at = None
+        for row in rows:
+            rec = dict(row)
+            for field in ("catalysts", "risks"):
+                if isinstance(rec.get(field), str):
+                    try:
+                        rec[field] = json.loads(rec[field])
+                    except (json.JSONDecodeError, TypeError):
+                        rec[field] = []
+            cat = rec.get("category", "").lower()
+            if cat in categories:
+                categories[cat].append(rec)
+            if generated_at is None and rec.get("generated_at"):
+                generated_at = rec["generated_at"]
+
+        stale = False
+        if generated_at:
+            try:
+                from datetime import timedelta
+                gen_dt = datetime.fromisoformat(generated_at)
+                stale = (datetime.now(timezone.utc) - gen_dt) > timedelta(hours=24)
+            except Exception:
+                pass
+
+        return {"categories": categories, "generated_at": generated_at, "stale": stale}
 
     # ── Settings (key-value store) ─────────────────────────────────────────────
 
