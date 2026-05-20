@@ -1,0 +1,429 @@
+{% extends "base.html" %}
+
+{% block title %}Discovery — StockAnalyser{% endblock %}
+
+{% block head %}
+<style>
+  .disc-page { padding: 20px 24px 40px; max-width: 1400px; margin: 0 auto; }
+
+  .disc-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+    margin-bottom: 24px;
+  }
+
+  .disc-title { font-size: 22px; font-weight: 700; margin-bottom: 4px; }
+  .disc-sub { font-size: 13px; color: var(--muted); }
+
+  .disc-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+
+  .stale-badge {
+    font-size: 11px;
+    font-weight: 700;
+    padding: 4px 10px;
+    border-radius: 20px;
+    background: rgba(255, 152, 0, 0.15);
+    color: var(--hold-short);
+    border: 1px solid rgba(255, 152, 0, 0.35);
+  }
+
+  .gen-status {
+    font-size: 12px;
+    color: var(--muted);
+    max-width: 360px;
+  }
+
+  .gen-status.error { color: #ff8a80; }
+
+  .section-divider {
+    margin: 36px 0 20px;
+    border: none;
+    border-top: 1px solid var(--border);
+  }
+
+  .section-head {
+    font-size: 16px;
+    font-weight: 700;
+    margin-bottom: 6px;
+  }
+
+  .section-sub {
+    font-size: 13px;
+    color: var(--muted);
+    margin-bottom: 18px;
+  }
+
+  .cat-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 14px;
+  }
+
+  .cat-col {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 14px;
+    min-height: 120px;
+  }
+
+  .cat-label {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    color: var(--muted);
+    margin-bottom: 12px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .idea-card {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px;
+    margin-bottom: 10px;
+  }
+
+  .idea-card:last-child { margin-bottom: 0; }
+
+  .idea-top {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 6px;
+  }
+
+  .idea-ticker { font-size: 15px; font-weight: 700; }
+  .idea-name { font-size: 11px; color: var(--muted); margin-top: 2px; }
+  .idea-price { font-size: 12px; color: var(--text); margin-top: 4px; }
+
+  .conf-HIGH { background: rgba(0,200,150,.15); color: var(--buy); border: 1px solid rgba(0,200,150,.35); }
+  .conf-MEDIUM { background: rgba(255,152,0,.12); color: var(--hold-short); border: 1px solid rgba(255,152,0,.3); }
+  .conf-LOW { background: rgba(107,116,153,.15); color: #8890b0; border: 1px solid rgba(107,116,153,.3); }
+
+  .conf-badge {
+    font-size: 10px;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 10px;
+    white-space: nowrap;
+  }
+
+  .badge-stack {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 4px;
+  }
+
+  .t212-badge {
+    font-size: 9px;
+    font-weight: 700;
+    padding: 2px 7px;
+    border-radius: 8px;
+    letter-spacing: 0.2px;
+  }
+
+  .t212-badge.yes {
+    background: rgba(0, 200, 150, 0.12);
+    color: var(--buy);
+    border: 1px solid rgba(0, 200, 150, 0.35);
+  }
+
+  .t212-badge.no {
+    background: rgba(240, 68, 58, 0.08);
+    color: #e57373;
+    border: 1px solid rgba(240, 68, 58, 0.25);
+  }
+
+  .idea-reason { font-size: 12px; line-height: 1.45; color: var(--text); margin: 8px 0; }
+
+  .pill-row { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+  .pill {
+    font-size: 10px;
+    padding: 2px 7px;
+    border-radius: 6px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--muted);
+  }
+  .pill.risk { border-color: rgba(240,68,58,.25); color: #e57373; }
+
+  .buy-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 14px;
+  }
+
+  .buy-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--buy);
+    border-radius: var(--radius);
+    padding: 14px 16px;
+  }
+
+  .buy-card h3 { font-size: 14px; font-weight: 700; margin-bottom: 2px; }
+  .buy-card .sub { font-size: 11px; color: var(--muted); margin-bottom: 10px; }
+  .buy-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 12px; }
+  .buy-stats span { color: var(--muted); display: block; font-size: 10px; text-transform: uppercase; letter-spacing: 0.4px; }
+
+  #gen-banner {
+    display: none;
+    background: rgba(33,150,243,.08);
+    border: 1px solid rgba(33,150,243,.2);
+    border-radius: var(--radius);
+    padding: 10px 14px;
+    margin-bottom: 16px;
+    font-size: 13px;
+    align-items: center;
+    gap: 10px;
+  }
+  #gen-banner.visible { display: flex; }
+  #gen-banner.error {
+    background: rgba(239,83,80,.1);
+    border-color: rgba(239,83,80,.3);
+    color: #ff8a80;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="disc-page">
+
+  <div class="disc-header">
+    <div>
+      <div class="disc-title">Discovery</div>
+      <div class="disc-sub">AI stock ideas outside your portfolio, plus positions already rated BUY.</div>
+    </div>
+    <div class="disc-actions">
+      {% if recs.stale and recs.has_data %}
+      <span class="stale-badge">Ideas &gt;24h old — regenerate?</span>
+      {% endif %}
+      {% if generated_display %}
+      <span class="disc-sub">Last generated: <strong style="color:var(--text)">{{ generated_display }}</strong></span>
+      {% endif %}
+      <button class="btn-primary" id="gen-btn" onclick="startGenerate()">Generate Fresh Ideas</button>
+    </div>
+  </div>
+
+  <div id="gen-banner">
+    <span class="spinner"></span>
+    <span id="gen-banner-text">Generating…</span>
+  </div>
+
+  <div class="section-head">New stock ideas</div>
+  <div class="section-sub">Not in your portfolio — refreshed each time you generate. After each run, ideas are checked against T212&apos;s tradable instrument list.</div>
+
+  <div class="cat-grid" id="ideas-grid">
+    {% for key, label in categories %}
+    <div class="cat-col" data-category="{{ key }}">
+      <div class="cat-label">{{ label }}</div>
+      {% set items = recs.categories.get(key) or [] %}
+      {% if items %}
+        {% for idea in items %}
+        <div class="idea-card">
+          <div class="idea-top">
+            <div>
+              <div class="idea-ticker">{{ idea.ticker }}</div>
+              <div class="idea-name">{{ idea.company_name or idea.ticker }}</div>
+              {% if idea.price_at_rec %}
+              <div class="idea-price">~{{ '%.2f'|format(idea.price_at_rec) }}</div>
+              {% endif %}
+            </div>
+            <div class="badge-stack">
+              <span class="conf-badge conf-{{ idea.confidence }}">{{ idea.confidence }}</span>
+              {% if idea.t212_available is not none %}
+              <span class="t212-badge {{ 'yes' if idea.t212_available else 'no' }}">
+                {{ 'On T212' if idea.t212_available else 'Not on T212' }}
+              </span>
+              {% endif %}
+            </div>
+          </div>
+          <div class="idea-reason">{{ idea.reasoning }}</div>
+          {% if idea.catalysts %}
+          <div class="pill-row">
+            {% for c in idea.catalysts[:3] %}<span class="pill">{{ c }}</span>{% endfor %}
+          </div>
+          {% endif %}
+          {% if idea.risks %}
+          <div class="pill-row">
+            {% for r in idea.risks[:2] %}<span class="pill risk">{{ r }}</span>{% endfor %}
+          </div>
+          {% endif %}
+        </div>
+        {% endfor %}
+      {% else %}
+        <p class="disc-sub" style="margin:0">No ideas in this category yet.</p>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+
+  <hr class="section-divider">
+
+  <div class="section-head">Add more — existing positions rated BUY</div>
+  <div class="section-sub">From your latest portfolio analysis. Consider adding to these convictions.</div>
+
+  {% if buy_more %}
+  <div class="buy-grid">
+    {% for card in buy_more %}
+    {% set name = card.instrument_name or company_names.get(card.ticker) or card.ticker %}
+    {% set price = card.current_price or 0 %}
+    {% set cost = card.avg_cost or card.cost_basis or 0 %}
+    {% set shares = card.shares or 0 %}
+    {% set pnl = card.unrealized_pnl if card.unrealized_pnl is not none else ((price - cost) * shares if price and cost else none) %}
+    <div class="buy-card">
+      <h3>{{ name }}</h3>
+      <div class="sub">{{ card.ticker }} · BUY · {{ card.confidence or '—' }} confidence</div>
+      <div class="buy-stats">
+        <div><span>Shares</span>{{ '%g'|format(shares) if shares else '—' }}</div>
+        <div><span>Avg cost</span>{% if cost %}£{{ '%.2f'|format(cost) }}{% else %}—{% endif %}</div>
+        <div><span>Price</span>{% if price %}£{{ '%.2f'|format(price) }}{% else %}—{% endif %}</div>
+        <div><span>P&amp;L</span>{% if pnl is not none %}<span class="{{ 'pos' if pnl >= 0 else 'neg' }}">{{ '+£' if pnl >= 0 else '-£' }}{{ '%.2f'|format(pnl|abs) }}</span>{% else %}—{% endif %}</div>
+      </div>
+      {% if card.reasoning %}
+      <p class="idea-reason" style="margin-top:10px;margin-bottom:0">{{ card.reasoning[:200] }}{% if card.reasoning|length > 200 %}…{% endif %}</p>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="empty-state" style="padding:32px">
+    <p>No current positions are rated BUY. Run portfolio analysis on the Dashboard first.</p>
+  </div>
+  {% endif %}
+
+</div>
+
+<script>
+const CATEGORIES = {{ categories | tojson }};
+const CATEGORY_KEYS = CATEGORIES.map(c => c[0]);
+const CATEGORY_LABELS = CATEGORIES.map(c => c[1]);
+
+function escapeHtml(s) {
+  const d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+function t212BadgeHtml(idea) {
+  if (idea.t212_available === true || idea.t212_available === 1) {
+    return '<span class="t212-badge yes">On T212</span>';
+  }
+  if (idea.t212_available === false || idea.t212_available === 0) {
+    return '<span class="t212-badge no">Not on T212</span>';
+  }
+  return '';
+}
+
+function renderIdeaCard(idea) {
+  const cats = (idea.catalysts || []).slice(0, 3).map(c =>
+    `<span class="pill">${escapeHtml(c)}</span>`).join('');
+  const risks = (idea.risks || []).slice(0, 2).map(r =>
+    `<span class="pill risk">${escapeHtml(r)}</span>`).join('');
+  const price = idea.price_at_rec ? `<div class="idea-price">~${Number(idea.price_at_rec).toFixed(2)}</div>` : '';
+  const t212 = t212BadgeHtml(idea);
+  return `<div class="idea-card">
+    <div class="idea-top">
+      <div>
+        <div class="idea-ticker">${escapeHtml(idea.ticker)}</div>
+        <div class="idea-name">${escapeHtml(idea.company_name || idea.ticker)}</div>
+        ${price}
+      </div>
+      <div class="badge-stack">
+        <span class="conf-badge conf-${idea.confidence}">${escapeHtml(idea.confidence)}</span>
+        ${t212}
+      </div>
+    </div>
+    <div class="idea-reason">${escapeHtml(idea.reasoning || '')}</div>
+    ${cats ? `<div class="pill-row">${cats}</div>` : ''}
+    ${risks ? `<div class="pill-row">${risks}</div>` : ''}
+  </div>`;
+}
+
+function renderIdeas(data) {
+  const grid = document.getElementById('ideas-grid');
+  const cats = data.categories || {};
+  let html = '';
+  CATEGORY_KEYS.forEach((key, i) => {
+    const items = cats[key] || [];
+    const label = CATEGORY_LABELS[i] || key;
+    const cards = items.length
+      ? items.map(renderIdeaCard).join('')
+      : '<p class="disc-sub" style="margin:0">No ideas in this category yet.</p>';
+    html += `<div class="cat-col" data-category="${key}">
+      <div class="cat-label">${escapeHtml(label)}</div>${cards}</div>`;
+  });
+  grid.innerHTML = html;
+}
+
+let genPolling = false;
+
+async function pollGenStatus() {
+  try {
+    const r = await fetch('/api/discovery/status');
+    const d = await r.json();
+    const banner = document.getElementById('gen-banner');
+    const text = document.getElementById('gen-banner-text');
+    const btn = document.getElementById('gen-btn');
+
+    if (d.status === 'running') {
+      banner.className = 'visible';
+      const lines = d.progress || [];
+      text.textContent = lines.length ? lines[lines.length - 1] : 'Generating ideas…';
+      btn.disabled = true;
+      setTimeout(pollGenStatus, 2000);
+      return;
+    }
+
+    btn.disabled = false;
+    if (d.status === 'error') {
+      banner.className = 'visible error';
+      banner.querySelector('.spinner').style.display = 'none';
+      text.textContent = d.error_message || 'Generation failed';
+      genPolling = false;
+      return;
+    }
+
+    if (genPolling && d.status === 'done') {
+      const res = await fetch('/api/discovery/results');
+      const data = await res.json();
+      renderIdeas(data);
+      banner.className = '';
+      if (data.generated_at_display) {
+        location.reload();
+      }
+      genPolling = false;
+    }
+  } catch (e) {
+    setTimeout(pollGenStatus, 3000);
+  }
+}
+
+async function startGenerate() {
+  const btn = document.getElementById('gen-btn');
+  btn.disabled = true;
+  try {
+    const r = await fetch('/api/discovery/generate', { method: 'POST' });
+    const d = await r.json();
+    if (!r.ok) {
+      alert(d.error || 'Could not start generation');
+      btn.disabled = false;
+      return;
+    }
+    genPolling = true;
+    pollGenStatus();
+  } catch (e) {
+    alert('Request failed');
+    btn.disabled = false;
+  }
+}
+</script>
+{% endblock %}

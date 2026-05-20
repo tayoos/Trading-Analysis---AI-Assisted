@@ -91,7 +91,7 @@ def _classify(path: str, method: str) -> list[str]:
     tiers = ["global"]
     if path.startswith("/api/"):
         tiers.append("normal_api")
-    if method == "POST" and path == "/api/run":
+    if method == "POST" and path in ("/api/run", "/api/discovery/generate"):
         tiers.append("burst_run")
     if method == "POST" and path.startswith("/api/sync"):
         tiers.append("burst_sync")

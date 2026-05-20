@@ -17,7 +17,7 @@ from .database import Database
 from .portfolio import PortfolioManager
 from .prices import LivePriceCache
 from .ratelimit import setup_rate_limiting
-from .routes import analysis_bp, dashboard_bp, history_bp, sync_bp
+from .routes import analysis_bp, dashboard_bp, discovery_bp, history_bp, sync_bp
 from .sources.t212 import T212DataSource
 
 logger = logging.getLogger(__name__)
@@ -81,6 +81,7 @@ def create_app() -> Flask:
     app.register_blueprint(analysis_bp)
     app.register_blueprint(history_bp)
     app.register_blueprint(sync_bp)
+    app.register_blueprint(discovery_bp)
 
     # ── Scheduler ──────────────────────────────────────────────────────────────
     _setup_scheduler(app, analyzer, portfolio, t212, backup)
