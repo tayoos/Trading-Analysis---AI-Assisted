@@ -365,6 +365,22 @@ class T212DataSource(DataSource):
         logger.info("T212 ▶ fetching pie %s", pie_id)
         return self._get(f"/api/v0/equity/pies/{pie_id}")
 
+    def get_instruments(self) -> list[dict]:
+        """
+        All tradable instruments (rate limit: 1 req / 50s on T212).
+        Caller should cache — see app.t212_instruments.
+        """
+        logger.info("T212 ▶ fetching instrument metadata")
+        data = self._get("/api/v0/equity/metadata/instruments")
+        if isinstance(data, list):
+            logger.info("T212 ✓ %d instruments", len(data))
+            return data
+        if isinstance(data, dict):
+            items = data.get("items") or data.get("instruments") or []
+            logger.info("T212 ✓ %d instruments", len(items))
+            return items
+        return []
+
     # ── Private helpers ────────────────────────────────────────────────────────
 
     def _get(self, path: str, params: Optional[dict] = None) -> dict | list:

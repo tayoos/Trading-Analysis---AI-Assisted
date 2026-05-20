@@ -101,6 +101,11 @@ class StockAnalyzer:
         self._current_ticker: Optional[str] = None
         self._error_kind: Optional[str] = None
         self._error_message: Optional[str] = None
+        self._ideas_lock = threading.Lock()
+        self._ideas_status: str = "idle"
+        self._ideas_progress: list[str] = []
+        self._ideas_error_kind: Optional[str] = None
+        self._ideas_error_message: Optional[str] = None
 
     # ── Status (thread-safe) ───────────────────────────────────────────────────
 
@@ -353,8 +358,201 @@ class StockAnalyzer:
         )
         t.start()
 
+    # ── Discovery: stock ideas ─────────────────────────────────────────────────
+
+    @property
+    def ideas_status(self) -> dict:
+        with self._ideas_lock:
+            return {
+                "status": self._ideas_status,
+                "progress": list(self._ideas_progress),
+                "error_kind": self._ideas_error_kind,
+                "error_message": self._ideas_error_message,
+            }
+
+    def _ideas_log(self, msg: str) -> None:
+        logger.info(msg)
+        with self._ideas_lock:
+            self._ideas_progress.append(msg)
+
+    def _set_ideas_status(
+        self,
+        status: str,
+        error_kind: Optional[str] = None,
+        error_message: Optional[str] = None,
+    ) -> None:
+        with self._ideas_lock:
+            self._ideas_status = status
+            if status == "error":
+                self._ideas_error_kind = error_kind
+                self._ideas_error_message = error_message
+            elif status in ("idle", "running", "done"):
+                self._ideas_error_kind = None
+                self._ideas_error_message = None
+
+    def generate_stock_ideas_bg(
+        self,
+        portfolio_tickers: list[str],
+        t212=None,
+    ) -> None:
+        with self._ideas_lock:
+            if self._ideas_status == "running":
+                raise RuntimeError("Discovery generation already in progress")
+        t = threading.Thread(
+            target=self.generate_stock_ideas,
+            args=(portfolio_tickers, t212),
+            daemon=True,
+            name="discovery-ideas",
+        )
+        t.start()
+
+    def generate_stock_ideas(self, portfolio_tickers: list[str], t212=None) -> dict:
+        with self._ideas_lock:
+            self._ideas_status = "running"
+            self._ideas_progress = []
+
+        self._ideas_log(f"[{_ts()}] Generating discovery ideas…")
+        portfolio_set = {t.upper() for t in portfolio_tickers}
+
+        try:
+            prompt = _build_ideas_prompt(portfolio_tickers)
+            self._ideas_log(f"[{_ts()}] Calling Claude for stock ideas…")
+            raw = _call_claude_sync(_IDEAS_SYSTEM_PROMPT + "\n\n" + prompt)
+            self._ideas_log(f"[{_ts()}] Claude response received ({len(raw)} chars)")
+
+            parsed = _parse_ideas_json(raw)
+            generated_at = datetime.now(timezone.utc).isoformat()
+            flat: list[dict] = []
+
+            for cat_key, items in parsed.items():
+                cat = _normalize_category(cat_key)
+                if not cat:
+                    continue
+                for item in items:
+                    if not isinstance(item, dict):
+                        continue
+                    ticker = (item.get("ticker") or "").upper().strip()
+                    if not ticker or ticker in portfolio_set:
+                        continue
+                    price = _fetch_idea_price(ticker)
+                    flat.append({
+                        "ticker": ticker,
+                        "company_name": item.get("company_name") or ticker,
+                        "category": cat,
+                        "confidence": (item.get("confidence") or "MEDIUM").upper(),
+                        "reasoning": item.get("reasoning") or "",
+                        "catalysts": item.get("catalysts") or [],
+                        "risks": item.get("risks") or [],
+                        "price_at_rec": price,
+                        "generated_at": generated_at,
+                    })
+
+            if flat and t212 is not None:
+                from .t212_instruments import enrich_recommendations_t212
+
+                self._ideas_log(f"[{_ts()}] Checking T212 instrument availability…")
+                flat, n_t212 = enrich_recommendations_t212(flat, t212)
+                self._ideas_log(
+                    f"[{_ts()}] T212: {n_t212}/{len(flat)} ideas available to trade"
+                )
+
+            self.db.save_stock_recommendations(flat)
+            n_cats = len({r["category"] for r in flat})
+            self._ideas_log(
+                f"[{_ts()}] Saved {len(flat)} ideas"
+                + (f" across {n_cats} categories" if n_cats else " (previous batch expired)")
+            )
+            self._set_ideas_status("done")
+            return self.db.get_stock_recommendations()
+
+        except AnalysisQuotaError as exc:
+            self._ideas_log(f"[{_ts()}] Stopped — {exc}")
+            self._set_ideas_status("error", "quota", str(exc))
+            raise
+        except Exception as exc:
+            kind, user_msg = classify_analysis_error(exc)
+            self._ideas_log(f"[{_ts()}] Discovery failed: {exc}")
+            self._set_ideas_status("error", kind, user_msg)
+            logger.exception("Discovery ideas generation failed")
+            raise
+
 
 # ── Claude Agent SDK helpers ───────────────────────────────────────────────────
+
+_IDEAS_SYSTEM_PROMPT = """You are a stock research analyst helping a UK-based retail investor discover new ideas.
+Suggest stocks they do NOT already hold. Output ONLY valid JSON — no markdown fences, no preamble.
+
+Use yfinance-compatible tickers (e.g. AAPL, MSFT, TMC, TM1.L for UK listings).
+Provide 3-5 ideas per category. confidence must be HIGH, MEDIUM, or LOW."""
+
+
+
+def _normalize_category(key: str) -> Optional[str]:
+    k = (key or "").lower().strip().replace(" ", "_")
+    mapping = {
+        "growth": "growth",
+        "value": "value",
+        "momentum": "momentum",
+        "motion": "momentum",
+        "dividend": "dividend",
+        "dividend_income": "dividend",
+        "defensive": "defensive",
+    }
+    if k in mapping:
+        return mapping[k]
+    return k if k in Database._REC_CATEGORIES else None
+
+
+def _build_ideas_prompt(portfolio_tickers: list[str]) -> str:
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    held = ", ".join(sorted(portfolio_tickers)) if portfolio_tickers else "(empty portfolio)"
+    return f"""Current portfolio (do NOT recommend these): {held}
+Date: {today}
+
+Suggest 3-5 NEW stocks per category for a UK investor using Trading 212.
+Categories: growth, value, dividend, momentum, defensive
+
+For each stock:
+- ticker (yfinance symbol)
+- company_name
+- confidence: HIGH | MEDIUM | LOW
+- reasoning (2-3 sentences)
+- catalysts: [2-3 strings]
+- risks: [2 strings]
+
+Return JSON only:
+{{"growth": [...], "value": [...], "dividend": [...], "momentum": [...], "defensive": [...]}}"""
+
+
+def _parse_ideas_json(raw: str) -> dict:
+    text = raw.strip()
+    if "```" in text:
+        parts = text.split("```")
+        for part in parts:
+            chunk = part.strip()
+            if chunk.lower().startswith("json"):
+                chunk = chunk[4:].strip()
+            if chunk.startswith("{"):
+                text = chunk
+                break
+    data = json.loads(text)
+    if not isinstance(data, dict):
+        raise ValueError("Expected JSON object from Claude")
+    return data
+
+
+def _fetch_idea_price(ticker: str) -> Optional[float]:
+    for candidate in _ticker_candidates(ticker):
+        try:
+            fast = yf.Ticker(candidate).fast_info
+            if fast.last_price and float(fast.last_price) > 0:
+                return float(fast.last_price)
+        except Exception:
+            continue
+    return None
+
+
+# ── Claude Agent SDK helpers (continued) ───────────────────────────────────────
 
 async def _call_claude_async(prompt: str) -> str:
     """Single-turn query via the Claude Agent SDK."""

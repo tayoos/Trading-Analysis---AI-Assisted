@@ -158,6 +158,25 @@ class Database:
                 CREATE INDEX IF NOT EXISTS idx_analyses_ticker ON analyses(ticker);
                 CREATE INDEX IF NOT EXISTS idx_trades_ticker ON trades(ticker);
                 CREATE INDEX IF NOT EXISTS idx_dividends_ticker ON dividends(ticker);
+
+                CREATE TABLE IF NOT EXISTS stock_recommendations (
+                    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+                    ticker         TEXT NOT NULL,
+                    company_name   TEXT,
+                    category       TEXT NOT NULL,
+                    confidence     TEXT NOT NULL,
+                    reasoning      TEXT,
+                    catalysts      TEXT,
+                    risks          TEXT,
+                    price_at_rec   REAL,
+                    generated_at   TEXT NOT NULL,
+                    status         TEXT NOT NULL DEFAULT 'active',
+                    t212_available INTEGER,
+                    t212_ticker    TEXT
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_recs_category ON stock_recommendations(category);
+                CREATE INDEX IF NOT EXISTS idx_recs_status ON stock_recommendations(status);
             """)
             self._migrate_schema(conn)
 
@@ -198,6 +217,125 @@ class Database:
 
         raw = self.get_setting("account_currency")
         return normalize_currency(raw or DEFAULT_ACCOUNT_CURRENCY)
+
+        conn.executescript("""
+            CREATE TABLE IF NOT EXISTS stock_recommendations (
+                id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                ticker       TEXT NOT NULL,
+                company_name TEXT,
+                category     TEXT NOT NULL,
+                confidence   TEXT NOT NULL,
+                reasoning    TEXT,
+                catalysts    TEXT,
+                risks        TEXT,
+                price_at_rec REAL,
+                generated_at TEXT NOT NULL,
+                status       TEXT NOT NULL DEFAULT 'active'
+            );
+            CREATE INDEX IF NOT EXISTS idx_recs_category ON stock_recommendations(category);
+            CREATE INDEX IF NOT EXISTS idx_recs_status ON stock_recommendations(status);
+        """)
+        rec_cols = {row[1] for row in conn.execute("PRAGMA table_info(stock_recommendations)")}
+        if "t212_available" not in rec_cols:
+            conn.execute(
+                "ALTER TABLE stock_recommendations ADD COLUMN t212_available INTEGER"
+            )
+        if "t212_ticker" not in rec_cols:
+            conn.execute("ALTER TABLE stock_recommendations ADD COLUMN t212_ticker TEXT")
+
+    # ── Stock recommendations (Discovery) ────────────────────────────────────────
+
+    _REC_CATEGORIES = ("growth", "value", "dividend", "momentum", "defensive")
+    _REC_STALE_HOURS = 24
+
+    def save_stock_recommendations(self, recs: list[dict]) -> None:
+        """Expire all active rows, then insert a fresh batch."""
+        generated_at = (recs[0].get("generated_at") if recs else None) or _now()
+        with self._conn() as conn:
+            conn.execute(
+                "UPDATE stock_recommendations SET status='expired' WHERE status='active'"
+            )
+            for rec in recs:
+                t212_avail = rec.get("t212_available")
+                if t212_avail is True:
+                    t212_avail = 1
+                elif t212_avail is False:
+                    t212_avail = 0
+                conn.execute(
+                    """INSERT INTO stock_recommendations
+                       (ticker, company_name, category, confidence, reasoning,
+                        catalysts, risks, price_at_rec, generated_at, status,
+                        t212_available, t212_ticker)
+                       VALUES (?,?,?,?,?,?,?,?,?,'active',?,?)""",
+                    (
+                        rec["ticker"].upper(),
+                        rec.get("company_name"),
+                        rec["category"],
+                        rec.get("confidence", "MEDIUM").upper(),
+                        rec.get("reasoning"),
+                        json.dumps(rec.get("catalysts") or []),
+                        json.dumps(rec.get("risks") or []),
+                        rec.get("price_at_rec"),
+                        generated_at,
+                        t212_avail,
+                        rec.get("t212_ticker"),
+                    ),
+                )
+
+    def get_recs_generated_at(self) -> Optional[str]:
+        with self._conn() as conn:
+            row = conn.execute(
+                """SELECT MAX(generated_at) AS ts FROM stock_recommendations
+                   WHERE status='active'"""
+            ).fetchone()
+            return row["ts"] if row and row["ts"] else None
+
+    def get_stock_recommendations(self) -> dict:
+        """Active recommendations grouped by category, with staleness flag."""
+        from datetime import datetime, timedelta, timezone
+
+        generated_at = self.get_recs_generated_at()
+        stale = False
+        if generated_at:
+            try:
+                ts = datetime.fromisoformat(generated_at.replace("Z", "+00:00"))
+                if ts.tzinfo is None:
+                    ts = ts.replace(tzinfo=timezone.utc)
+                age = datetime.now(timezone.utc) - ts
+                stale = age > timedelta(hours=self._REC_STALE_HOURS)
+            except ValueError:
+                stale = True
+
+        categories: dict[str, list[dict]] = {c: [] for c in self._REC_CATEGORIES}
+        with self._conn() as conn:
+            rows = conn.execute(
+                """SELECT * FROM stock_recommendations
+                   WHERE status='active' ORDER BY category, confidence, ticker"""
+            ).fetchall()
+            for row in rows:
+                rec = self._decode_recommendation(dict(row))
+                key = rec["category"].lower()
+                if key in categories:
+                    categories[key].append(rec)
+
+        return {
+            "categories": categories,
+            "generated_at": generated_at,
+            "stale": stale,
+            "has_data": bool(generated_at),
+        }
+
+    @staticmethod
+    def _decode_recommendation(row: dict) -> dict:
+        for field in ("catalysts", "risks"):
+            if isinstance(row.get(field), str):
+                try:
+                    row[field] = json.loads(row[field])
+                except (json.JSONDecodeError, TypeError):
+                    row[field] = []
+        if row.get("t212_available") is not None:
+            row["t212_available"] = bool(row["t212_available"])
+        return row
 
     # ── Runs ───────────────────────────────────────────────────────────────────
 
