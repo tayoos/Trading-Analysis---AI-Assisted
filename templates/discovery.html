@@ -4,7 +4,7 @@
 
 {% block head %}
 <style>
-  .disc-page { padding: 20px 24px 40px; max-width: 1400px; margin: 0 auto; }
+  .disc-page { padding: 20px 24px 40px; max-width: none; margin: 0 auto; }
 
   .disc-header {
     display: flex;
@@ -58,16 +58,21 @@
 
   .cat-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-    gap: 14px;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  @media (max-width: 1200px) {
+    .cat-grid { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
   }
 
   .cat-col {
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: var(--radius);
-    padding: 14px;
-    min-height: 120px;
+    padding: 12px;
+    min-height: 80px;
+    min-width: 0;
   }
 
   .cat-label {
@@ -85,8 +90,20 @@
     background: var(--surface2);
     border: 1px solid var(--border);
     border-radius: 8px;
-    padding: 12px;
-    margin-bottom: 10px;
+    padding: 10px;
+    margin-bottom: 8px;
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s;
+  }
+
+  .idea-card:hover {
+    border-color: rgba(0, 200, 150, 0.35);
+    background: var(--surface);
+  }
+
+  .idea-card:focus-visible {
+    outline: 2px solid var(--buy);
+    outline-offset: 2px;
   }
 
   .idea-card:last-child { margin-bottom: 0; }
@@ -99,9 +116,19 @@
     margin-bottom: 6px;
   }
 
-  .idea-ticker { font-size: 15px; font-weight: 700; }
-  .idea-name { font-size: 11px; color: var(--muted); margin-top: 2px; }
-  .idea-price { font-size: 12px; color: var(--text); margin-top: 4px; }
+  .idea-ticker { font-size: 14px; font-weight: 700; line-height: 1.2; }
+  .idea-name {
+    font-size: 10px;
+    color: var(--muted);
+    margin-top: 2px;
+    line-height: 1.25;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+  }
+  .idea-price { font-size: 11px; color: var(--text); margin-top: 4px; }
 
   .conf-HIGH { background: rgba(0,200,150,.15); color: var(--buy); border: 1px solid rgba(0,200,150,.35); }
   .conf-MEDIUM { background: rgba(255,152,0,.12); color: var(--hold-short); border: 1px solid rgba(255,152,0,.3); }
@@ -142,18 +169,90 @@
     border: 1px solid rgba(240, 68, 58, 0.25);
   }
 
-  .idea-reason { font-size: 12px; line-height: 1.45; color: var(--text); margin: 8px 0; }
+  .idea-reason { font-size: 13px; line-height: 1.55; color: var(--text); margin: 0 0 4px; }
 
-  .pill-row { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
-  .pill {
+  .detail-section-label {
     font-size: 10px;
-    padding: 2px 7px;
-    border-radius: 6px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--muted);
+    margin: 16px 0 8px;
+  }
+
+  .detail-list { display: flex; flex-direction: column; gap: 8px; }
+
+  .detail-item {
+    font-size: 12px;
+    line-height: 1.45;
+    padding: 10px 12px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+  }
+
+  .detail-item.catalyst {
+    border-color: rgba(33, 150, 243, 0.35);
+    color: #7eb8e8;
+    background: rgba(33, 150, 243, 0.06);
+  }
+
+  .detail-item.risk {
+    border-color: rgba(240, 68, 58, 0.3);
+    color: #e57373;
+    background: rgba(240, 68, 58, 0.05);
+  }
+
+  #idea-modal {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.65);
+    z-index: 1000;
+    padding: 24px;
+    overflow-y: auto;
+    align-items: flex-start;
+    justify-content: center;
+  }
+
+  #idea-modal.open { display: flex; }
+
+  .idea-modal-box {
     background: var(--surface);
     border: 1px solid var(--border);
-    color: var(--muted);
+    border-radius: var(--radius);
+    max-width: 560px;
+    width: 100%;
+    margin: 40px auto;
+    box-shadow: 0 24px 64px rgba(0, 0, 0, 0.5);
   }
-  .pill.risk { border-color: rgba(240,68,58,.25); color: #e57373; }
+
+  .idea-modal-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 16px 18px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .idea-modal-title { font-size: 18px; font-weight: 700; margin: 0; }
+  .idea-modal-sub { font-size: 12px; color: var(--muted); margin-top: 4px; }
+  .idea-modal-price { font-size: 13px; margin-top: 6px; }
+
+  .idea-modal-close {
+    background: none;
+    border: none;
+    color: var(--muted);
+    font-size: 18px;
+    cursor: pointer;
+    padding: 4px 8px;
+    border-radius: 4px;
+    flex-shrink: 0;
+  }
+
+  .idea-modal-close:hover { background: var(--surface2); color: var(--text); }
+
+  #idea-modal-body { padding: 16px 18px 20px; }
 
   .buy-grid {
     display: grid;
@@ -228,7 +327,10 @@
       {% set items = recs.categories.get(key) or [] %}
       {% if items %}
         {% for idea in items %}
-        <div class="idea-card">
+        <div class="idea-card" role="button" tabindex="0"
+             data-idea='{{ idea | tojson }}'
+             onclick="openIdeaModal(this)"
+             onkeydown="if(event.key==='Enter'||event.key===' ') { event.preventDefault(); openIdeaModal(this); }">
           <div class="idea-top">
             <div>
               <div class="idea-ticker">{{ idea.ticker }}</div>
@@ -246,17 +348,6 @@
               {% endif %}
             </div>
           </div>
-          <div class="idea-reason">{{ idea.reasoning }}</div>
-          {% if idea.catalysts %}
-          <div class="pill-row">
-            {% for c in idea.catalysts[:3] %}<span class="pill">{{ c }}</span>{% endfor %}
-          </div>
-          {% endif %}
-          {% if idea.risks %}
-          <div class="pill-row">
-            {% for r in idea.risks[:2] %}<span class="pill risk">{{ r }}</span>{% endfor %}
-          </div>
-          {% endif %}
         </div>
         {% endfor %}
       {% else %}
@@ -302,6 +393,21 @@
 
 </div>
 
+<div id="idea-modal" onclick="closeIdeaModal(event)">
+  <div class="idea-modal-box" onclick="event.stopPropagation()">
+    <div class="idea-modal-header">
+      <div>
+        <h2 class="idea-modal-title" id="idea-modal-ticker"></h2>
+        <div class="idea-modal-sub" id="idea-modal-name"></div>
+        <div class="idea-modal-price" id="idea-modal-price"></div>
+      </div>
+      <div class="badge-stack" id="idea-modal-badges"></div>
+      <button type="button" class="idea-modal-close" onclick="closeIdeaModal()" aria-label="Close">✕</button>
+    </div>
+    <div id="idea-modal-body"></div>
+  </div>
+</div>
+
 <script>
 const CATEGORIES = {{ categories | tojson }};
 const CATEGORY_KEYS = CATEGORIES.map(c => c[0]);
@@ -323,14 +429,17 @@ function t212BadgeHtml(idea) {
   return '';
 }
 
+function ideaDataAttr(idea) {
+  return JSON.stringify(idea).replace(/&/g, '&amp;').replace(/'/g, '&#39;');
+}
+
 function renderIdeaCard(idea) {
-  const cats = (idea.catalysts || []).slice(0, 3).map(c =>
-    `<span class="pill">${escapeHtml(c)}</span>`).join('');
-  const risks = (idea.risks || []).slice(0, 2).map(r =>
-    `<span class="pill risk">${escapeHtml(r)}</span>`).join('');
   const price = idea.price_at_rec ? `<div class="idea-price">~${Number(idea.price_at_rec).toFixed(2)}</div>` : '';
   const t212 = t212BadgeHtml(idea);
-  return `<div class="idea-card">
+  return `<div class="idea-card" role="button" tabindex="0"
+    data-idea='${ideaDataAttr(idea)}'
+    onclick="openIdeaModal(this)"
+    onkeydown="if(event.key==='Enter'||event.key===' ') { event.preventDefault(); openIdeaModal(this); }">
     <div class="idea-top">
       <div>
         <div class="idea-ticker">${escapeHtml(idea.ticker)}</div>
@@ -342,10 +451,63 @@ function renderIdeaCard(idea) {
         ${t212}
       </div>
     </div>
-    <div class="idea-reason">${escapeHtml(idea.reasoning || '')}</div>
-    ${cats ? `<div class="pill-row">${cats}</div>` : ''}
-    ${risks ? `<div class="pill-row">${risks}</div>` : ''}
   </div>`;
+}
+
+function parseIdeaEl(el) {
+  const raw = el.getAttribute('data-idea');
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw);
+  } catch (_) {
+    return null;
+  }
+}
+
+function renderIdeaModalBody(idea) {
+  let html = '';
+  if (idea.reasoning) {
+    html += `<p class="idea-reason">${escapeHtml(idea.reasoning)}</p>`;
+  }
+  const catalysts = idea.catalysts || [];
+  const risks = idea.risks || [];
+  if (catalysts.length) {
+    html += '<div class="detail-section-label">Catalysts</div><div class="detail-list">';
+    catalysts.forEach(c => {
+      html += `<div class="detail-item catalyst">${escapeHtml(c)}</div>`;
+    });
+    html += '</div>';
+  }
+  if (risks.length) {
+    html += '<div class="detail-section-label">Risks</div><div class="detail-list">';
+    risks.forEach(r => {
+      html += `<div class="detail-item risk">${escapeHtml(r)}</div>`;
+    });
+    html += '</div>';
+  }
+  return html || '<p class="disc-sub" style="margin:0">No further detail available.</p>';
+}
+
+function openIdeaModal(el) {
+  const idea = typeof el === 'object' && el.getAttribute ? parseIdeaEl(el) : el;
+  if (!idea) return;
+  document.getElementById('idea-modal-ticker').textContent = idea.ticker || '';
+  document.getElementById('idea-modal-name').textContent = idea.company_name || idea.ticker || '';
+  const priceEl = document.getElementById('idea-modal-price');
+  priceEl.textContent = idea.price_at_rec ? `~${Number(idea.price_at_rec).toFixed(2)}` : '';
+  priceEl.style.display = idea.price_at_rec ? '' : 'none';
+  document.getElementById('idea-modal-badges').innerHTML =
+    `<span class="conf-badge conf-${idea.confidence}">${escapeHtml(idea.confidence || '')}</span>` +
+    t212BadgeHtml(idea);
+  document.getElementById('idea-modal-body').innerHTML = renderIdeaModalBody(idea);
+  document.getElementById('idea-modal').classList.add('open');
+  document.body.style.overflow = 'hidden';
+}
+
+function closeIdeaModal(e) {
+  if (e && e.target !== document.getElementById('idea-modal')) return;
+  document.getElementById('idea-modal').classList.remove('open');
+  document.body.style.overflow = '';
 }
 
 function renderIdeas(data) {
@@ -406,6 +568,10 @@ async function pollGenStatus() {
     setTimeout(pollGenStatus, 3000);
   }
 }
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') closeIdeaModal();
+});
 
 async function startGenerate() {
   const btn = document.getElementById('gen-btn');
